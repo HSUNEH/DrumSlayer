@@ -109,6 +109,6 @@ if __name__ == '__main__':
         audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
         audio_loop_drum = audio_loop_kick + audio_loop_snare + audio_loop_hhclosed
         audio_loop_drum = np.transpose(audio_loop_drum)
-        output_dir = './samples_3/'
+        output_dir = './samples/'
         os.makedirs(output_dir, exist_ok=True)
         sf.write( f'{output_dir}'+f'{idx}.wav', audio_loop_drum, sample_rate)
