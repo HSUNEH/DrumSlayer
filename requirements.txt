@@ -1,4 +1,14 @@
+#midi_generate
 miditoolkit == 0.1.16
 numpy == 1.21.5
 matplotlib == 3.7.1
 mido ==  1.2.10
+
+# midi_2_wav
+tqdm
+scipy
+librosa
+soundfile
+
+#model
+lightning

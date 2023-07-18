@@ -56,15 +56,15 @@ for _ in range(midi_number):
     mido_obj.markers.append(marker_hi)
 
     # write to file
-    output_dir = f'generated_midi/{midi_name}'
+    output_dir = f'midi_2_wav/drum_data_practice/generated_midi/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f'{midi_name}_{_}.midi')
     mido_obj.dump(output_file)
 
     # write to midi file
-    output_dir = f'generated_midi_numpy/{midi_name}'
+    output_dir = f'midi_2_wav/drum_data_practice/generated_midi_numpy/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
-    np.save(f'/Users/hwang/drum_transcription/generated_midi_numpy/{midi_name}_{_}', midi_numpy)    
+    np.save(f'midi_2_wav/drum_data_practice/generated_midi_numpy/{midi_name}_{_}', midi_numpy)    
 
 
 
