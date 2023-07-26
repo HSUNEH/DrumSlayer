@@ -5,20 +5,36 @@ from miditoolkit.midi import containers as ct
 
 import os
 ######################
-# generating 4tick (1beat)
+
 ##### parameter #####
-midi_number = 10
-note_number = 4
-midi_name   = 'snare'
-sample_rate = 48000
+midi_number = 10        # midi 개수
+note_number = 8         # onset 개수
+midi_name   = 'hihat'
+
+bpm = 120
+sec_per_tick = 60 / bpm
+tick_number = 4         # 4tick = 1beat
+sample_rate = 48000     
 #####################
+# mu, sigma -> musig = True
+musig = True
 # velocity range: (0,127)
 velocity_mu    = 100
 velocity_sigma = 3
 # pitch range : (0,127) 
 pitch_mu    = 60
-pitch_sigma = 3
+pitch_sigma = 2
+
+# random -> musig = False
+# musig = False
+vel_range = [64,128]
+pitch_range = [48,72]
 #####################
+grid_music = True # start on ( beat (1920) / note number )
+grid_music_musig = True
+grid_music_sigma = 10
+#####################
+
 
 for _ in range(midi_number):
     # create an empty file
@@ -26,7 +42,7 @@ for _ in range(midi_number):
     beat_resol = mido_obj.ticks_per_beat
 
     # create an  instrument
-    track = ct.Instrument(program=0, is_drum=True, name='example track')
+    track = ct.Instrument(program=0, is_drum=True, name = midi_name)
     mido_obj.instruments = [track]
 
     # 1beat = 1920 / 1tick = 480
@@ -34,20 +50,32 @@ for _ in range(midi_number):
 
     for i in range(note_number):
         # create one note
-        start = np.random.randint(0, 1919)
-        end = start + 1
+        if grid_music == True:     # 1beat = 1920 / 1tick = 480 (1beat = 4tick)
+            if grid_music_musig == True:
+                if i == 0 :
+                    start = abs(int(tick_number * 480 / note_number) * i + int(np.random.normal(0, grid_music_sigma)))
+                else:
+                    start = int(tick_number * 480 / note_number) * i + int(np.random.normal(0, grid_music_sigma))
+                end = start + 1
+            else:
+                start = int(tick_number * 480 / note_number) * i 
+                end = start + 1
+        else: 
+            start = np.random.randint(0, (tick_number * 480) -1)
+            end = start + 1
 
-        velocity = int(np.random.normal(velocity_mu, velocity_sigma))
-        pitch = int(np.random.normal(pitch_mu, pitch_sigma))
-        
+        if musig == True:
+            velocity = int(np.random.normal(velocity_mu, velocity_sigma))
+            pitch = int(np.random.normal(pitch_mu, pitch_sigma))
+        else:
+            velocity = np.random.randint(vel_range[0],vel_range[1])
+            pitch = np.random.randint(pitch_range[0],pitch_range[1])
+
         note = ct.Note(start=start, end=end, pitch=pitch, velocity=velocity)
 
         mido_obj.instruments[0].notes.append(note)
-                
-        # midi to numpy
-        # 1sec -> 48000 
-        # 1 tick -> 480, 2sec -> 960000 sample 
-        start_n = start*200
+
+        start_n = int(start*(sec_per_tick * tick_number * sample_rate /(tick_number*480)))
         midi_numpy[0,start_n] = (velocity+1)/128
         midi_numpy[1,start_n] = pitch
 
@@ -64,7 +92,7 @@ for _ in range(midi_number):
     # write to midi file
     output_dir = f'midi_2_wav/drum_data_practice/generated_midi_numpy/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
-    np.save(f'midi_2_wav/drum_data_practice/generated_midi_numpy/{midi_name}_{_}', midi_numpy)    
+    np.save(output_dir+f'/{midi_name}_{_}', midi_numpy)    
 
 
 

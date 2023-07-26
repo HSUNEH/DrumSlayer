@@ -1,5 +1,4 @@
 # Ignore build directories
-generated_midi/
-generated_midi_numpy/
 midi_2_wav/*sample*/
-midi_2_wav/drum_data_practice/proprietary_dataset
+midi_2_wav/drum_data_practice/
+midi_2_wav/samples
