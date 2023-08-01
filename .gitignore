@@ -2,3 +2,5 @@
 midi_2_wav/*sample*/
 midi_2_wav/drum_data_practice/
 midi_2_wav/samples
+practice.ipynb
+lightning_logs
