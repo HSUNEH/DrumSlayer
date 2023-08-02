@@ -14,6 +14,7 @@ midi_name   = 'hihat'
 bpm = 120
 sec_per_tick = 60 / bpm
 tick_number = 4         # 4tick = 1beat
+print("Midi sec : ", sec_per_tick * tick_number )
 sample_rate = 48000     
 #####################
 # mu, sigma -> musig = True

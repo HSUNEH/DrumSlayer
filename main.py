@@ -1,5 +1,8 @@
 # TODO 1) audio -> Log mel spectrogram -> encoding -> decoding -> MIDI file
 # Baseline 1) : Encoder Decoder (Onset + DrummerNet)
+## Loss
+# Onset : 
+# DrummerNet : Mean Absolute Error between audio CQT
 
 # TODO 2): MIDI file  <-> midi token 
 # Baseline 2) : MT3 - T5 transformer 
@@ -7,7 +10,6 @@
 
 # audiopreprocessing :  audio -> log mel
 # model :               encoding & decoding
-
 
 ## pytorch lightning 
 # essential 
@@ -41,8 +43,7 @@ class Autoencoder(L.LightningModule):
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(128, 128*188),
-            nn.Sigmoid()  # Output should be between 0 and 1 (image pixel values)
+            nn.Linear(128, 128*188)
         )
 
     def forward(self, x):
