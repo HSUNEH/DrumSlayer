@@ -85,16 +85,16 @@ if __name__ == '__main__':
     dir_ss_kick = './midi_2_wav/drum_data_practice/proprietary_dataset/kick'
     dir_ss_snare = './midi_2_wav/drum_data_practice/proprietary_dataset/snare'
     dir_ss_hhclosed = './midi_2_wav/drum_data_practice/proprietary_dataset/hhclosed'
-    dir_ss_hhopen = './midi_2_wav/drum_data_practice/proprietary_dataset/hhopen'
+    # dir_ss_hhopen = './midi_2_wav/drum_data_practice/proprietary_dataset/hhopen'
 
-    dir_midi_kick = './midi_2_wav/drum_data_practice/generated_midi_numpy/kick'
-    dir_midi_snare = './midi_2_wav/drum_data_practice/generated_midi_numpy/snare'
-    dir_midi_hhclosed = './midi_2_wav/drum_data_practice/generated_midi_numpy/hihat'
+    dir_midi_kick = './midi_2_wav/drum_data/generated_midi_numpy/kick_16r'
+    dir_midi_snare = './midi_2_wav/drum_data/generated_midi_numpy/snare_16r'
+    dir_midi_hhclosed = './midi_2_wav/drum_data/generated_midi_numpy/hihat_16r'
 
     ss_kick = SingleShot(dir_ss_kick, sample_rate)
     ss_snare = SingleShot(dir_ss_snare, sample_rate)
     ss_hhclosed = SingleShot(dir_ss_hhclosed, sample_rate)
-    ss_hhopen = SingleShot(dir_ss_hhopen, sample_rate)
+    # ss_hhopen = SingleShot(dir_ss_hhopen, sample_rate)
 
     midi_kick = MIDI(dir_midi_kick)
     midi_snare = MIDI(dir_midi_snare)
@@ -104,12 +104,12 @@ if __name__ == '__main__':
     loop_snare = Loop(ss_snare, midi_snare, loop_seconds, 100)
     loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds, 100)
 
-    for idx in tqdm(range(10)):
+    for idx in tqdm(range(1000)):
         audio_loop_kick, _, _  = loop_kick[idx]
         audio_loop_snare, _, _  = loop_snare[idx]
         audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
         audio_loop_drum = audio_loop_kick + audio_loop_snare + audio_loop_hhclosed
         audio_loop_drum = np.transpose(audio_loop_drum)
-        output_dir = './midi_2_wav/samples/'
+        output_dir = './midi_2_wav/drum_data/samples/'
         os.makedirs(output_dir, exist_ok=True)
         sf.write( f'{output_dir}'+f'{idx}.wav', audio_loop_drum, sample_rate)

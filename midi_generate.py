@@ -2,23 +2,23 @@ import numpy as np
 
 from miditoolkit.midi import parser as mid_parser  
 from miditoolkit.midi import containers as ct
-
+from tqdm import tqdm
 import os
 ######################
 
 ##### parameter #####
-midi_number = 10        # midi 개수
-note_number = 8         # onset 개수
-midi_name   = 'hihat'
+midi_number = 1000        # midi 개수
+note_number = 2         # onset 개수
+midi_name   = 'snare_16r'
 
 bpm = 120
 sec_per_tick = 60 / bpm
 tick_number = 4         # 4tick = 1beat
 print("Midi sec : ", sec_per_tick * tick_number )
-sample_rate = 48000     
+sample_rate = 48000         
 #####################
 # mu, sigma -> musig = True
-musig = True
+# musig = True
 # velocity range: (0,127)
 velocity_mu    = 100
 velocity_sigma = 3
@@ -27,17 +27,19 @@ pitch_mu    = 60
 pitch_sigma = 2
 
 # random -> musig = False
-# musig = False
-vel_range = [64,128]
+musig = False
+vel_range = [95,105] #[64,128]
 pitch_range = [48,72]
 #####################
-grid_music = True # start on ( beat (1920) / note number )
+grid_music = False # start on ( beat (1920) / note number )
 grid_music_musig = True
 grid_music_sigma = 10
+
+grid_16 = True
 #####################
 
 
-for _ in range(midi_number):
+for _ in tqdm(range(midi_number)):
     # create an empty file
     mido_obj = mid_parser.MidiFile()
     beat_resol = mido_obj.ticks_per_beat
@@ -61,6 +63,12 @@ for _ in range(midi_number):
             else:
                 start = int(tick_number * 480 / note_number) * i 
                 end = start + 1
+        elif grid_16 == True:
+            start = np.random.randint(0, (tick_number * 16))
+            start *= 30
+            if start == 480*tick_number:
+                start -= 1
+            end = start + 1
         else: 
             start = np.random.randint(0, (tick_number * 480) -1)
             end = start + 1
@@ -85,13 +93,13 @@ for _ in range(midi_number):
     mido_obj.markers.append(marker_hi)
 
     # write to file
-    output_dir = f'midi_2_wav/drum_data_practice/generated_midi/{midi_name}'
+    output_dir = f'midi_2_wav/drum_data/generated_midi/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f'{midi_name}_{_}.midi')
     mido_obj.dump(output_file)
 
     # write to midi file
-    output_dir = f'midi_2_wav/drum_data_practice/generated_midi_numpy/{midi_name}'
+    output_dir = f'midi_2_wav/drum_data/generated_midi_numpy/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
     np.save(output_dir+f'/{midi_name}_{_}', midi_numpy)    
 
@@ -104,3 +112,4 @@ for _ in range(midi_number):
 
 
     # print('\nmarker:', mido_obj_re.markers)
+print(f"generated '{midi_number}' number of '{midi_name}' succeed")
