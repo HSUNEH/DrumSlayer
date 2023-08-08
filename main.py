@@ -29,7 +29,7 @@ import numpy
 import os
 
 
-class Autoencoder():
+class Autoencoder(L.LightningModule):
     def __init__(self):
         super(Autoencoder, self).__init__()
         self.compress_ratio = 2 ** 10 
@@ -52,6 +52,8 @@ class Autoencoder():
         )
         self.last_conv = nn.Conv1d(100, 100, 3, padding = 1, stride=1)
         
+        
+
     def forward(self, x):
         div = self.compress_ratio
         nsp_src = x.shape[1]
@@ -88,7 +90,7 @@ class Autoencoder():
 
         r = self.last_conv(y)
         print(r.shape)
-        return self.act(r), xs, ys
+        return self.act(r)
 
     def training_step(self, batch, batch_idx):
         # batch -> torch.Size([batch_size, 128, 188])

@@ -1,4 +1,4 @@
 # Ignore build directories
-midi_2_wav
+midi_2_wav/drum_data
 practice.ipynb
 lightning_logs
