@@ -29,7 +29,7 @@ import numpy as np
 import os
 
 
-class Autoencoder():
+class Autoencoder(L.LightningModule):
     def __init__(self):
         super(Autoencoder, self).__init__()
         self.compress_ratio = 2 ** 10 
@@ -178,7 +178,7 @@ class SpectrogramDataset(Dataset):
         snare_np = np.load(os.path.join(self.snare_nps_folder, self.snare_nps[idx]))
         snare_torch = torch.from_numpy(snare_np)
 
-        drum_torch = torch.cat([kick_torch, hihat_torch, snare_torch], dim=1)
+        drum_torch = torch.cat([kick_torch, hihat_torch, snare_torch], dim=0)
         return  spectrogram, drum_torch
         # spectrogram : (batch, sound+padding)
         # drum_torch : (batch , 2, 384000)
@@ -199,13 +199,13 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True) # torch([batch, 128, 188])
     
     batch = next(iter(dataloader))
-    print("Batch shape from dataloader:", batch[0].shape, batch[1].shape ,batch[2].shape,batch[3].shape)
+    print("Batch shape from dataloader:", batch[0].shape, batch[1].shape)
 
 
-    # # 모델 및 Trainer 생성
-    # model = Autoencoder()
-    # trainer = L.Trainer(max_epochs=10)
+    # 모델 및 Trainer 생성
+    model = Autoencoder()
+    trainer = L.Trainer(max_epochs=10)
 
-    # # 학습 시작
-    # trainer.fit(model, dataloader)
+    # 학습 시작
+    trainer.fit(model, dataloader)
     
