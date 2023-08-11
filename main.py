@@ -29,7 +29,7 @@ import numpy
 import os
 
 
-class Autoencoder(L.LightningModule):
+class Autoencoder():
     def __init__(self):
         super(Autoencoder, self).__init__()
         self.compress_ratio = 2 ** 10 
@@ -51,8 +51,11 @@ class Autoencoder(L.LightningModule):
         [nn.Conv1d(100, 50, 3, padding = 1, stride=1, bias = False) for _ in range(5)]
         )
         self.last_conv = nn.Conv1d(100, 100, 3, padding = 1, stride=1)
-        
-        
+
+        self.hidden_size = 3
+        self.num_layers = 3 # 악기 개수
+        self.channel_size = 100 # input / 16
+        self.bi_lstm = nn.LSTM(self.channel_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True)
 
     def forward(self, x):
         div = self.compress_ratio
@@ -64,13 +67,13 @@ class Autoencoder(L.LightningModule):
         x = torch.unsqueeze(x,1)
         x= self.act(self.d_conv0(x)) # ( batch , n_ch , N) 
         
-        
+
         xs = []
         for module in self.d_convs:
             x = module(x)
             x = self.act(x)
             x = self.maxpool(x)
-            print(x.shape)
+            # print("d_conv : ", x.shape)
             xs.append(x)
         
         y = self.act(self.encode_conv(xs.pop()))
@@ -80,17 +83,29 @@ class Autoencoder(L.LightningModule):
         for module in self.u_convs:
             y = module(y)
             y = self.act(y)
+            # print('before interpolate : ',y.shape)
             y = F.interpolate(y, scale_factor=2,
                     mode=int(y.dim() == 4) * 'bi' + 'linear', align_corners=False)
             x = xs.pop()
 
             y = torch.cat((y, x), dim=1)
-            print(y.shape)
+            # print("u_conv : ", y.shape)
             ys.append(y)
 
-        r = self.last_conv(y)
-        print(r.shape)
-        return self.act(r)
+        r = self.act(self.last_conv(y)) # (batch, 100, rate/16)
+        print("r : ", r.shape)
+        r = r.transpose(1,2)
+        # print("r (tr): ", r.shape)
+        
+        h0 = torch.zeros(self.num_layers*2, r.size(0), self.hidden_size) # Hidden state
+        c0 = torch.zeros(self.num_layers*2, r.size(0), self.hidden_size) # Cell state
+
+        after, (hn, cn) = self.bi_lstm(r, (h0,c0)) 
+
+        # print("lstm : ", after.shape)
+        
+
+        return after
 
     def training_step(self, batch, batch_idx):
         # batch -> torch.Size([batch_size, 128, 188])
@@ -120,8 +135,17 @@ class SpectrogramDataset(Dataset):
 
     def __getitem__(self, idx):
         wav_file = os.path.join(self.data_folder, self.wav_files[idx])
-        spectrogram = audio_to_log_mel_spectrogram(wav_file, sr=self.sr, n_mels=self.n_mels)
-        return torch.tensor(spectrogram, dtype=torch.float32)
+        
+        # spectrogram = audio_to_log_mel_spectrogram(wav_file, sr=self.sr, n_mels=self.n_mels)
+        spectrogram, sr = librosa.load(wav_file, sr = self.sr)
+        spectrogram = torch.tensor(spectrogram, dtype=torch.float32)
+        # padding for 2^
+ 
+        if spectrogram.shape[0] % 1024 != 0:
+            padding = spectrogram.shape[0] % 1024
+            spectrogram = torch.cat([spectrogram, torch.zeros(padding)])
+
+        return spectrogram
 
 
 

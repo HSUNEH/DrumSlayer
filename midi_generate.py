@@ -7,9 +7,9 @@ import os
 ######################
 
 ##### parameter #####
-midi_number = 1000        # midi 개수
+midi_number = 1        # midi 개수
 note_number = 2         # onset 개수
-midi_name   = 'snare_16r'
+midi_name   = 'a'
 
 bpm = 120
 sec_per_tick = 60 / bpm
@@ -49,7 +49,7 @@ for _ in tqdm(range(midi_number)):
     mido_obj.instruments = [track]
 
     # 1beat = 1920 / 1tick = 480
-    midi_numpy = np.zeros([2,sample_rate * 8]) # sample rate * sec
+    midi_numpy = np.zeros([2,int(sample_rate * sec_per_tick * tick_number)]) # sample rate * sec
 
     for i in range(note_number):
         # create one note
