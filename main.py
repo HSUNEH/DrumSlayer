@@ -25,7 +25,7 @@ from torch.utils.data import Dataset, DataLoader
 import lightning as L
 from audiopreprocessing import audio_to_log_mel_spectrogram
 import librosa
-import numpy
+import numpy as np
 import os
 
 
@@ -104,17 +104,31 @@ class Autoencoder():
 
         # print("lstm : ", after.shape)
         
+        represent = after.transpose(1,2)
+        
+        # print("lstm(tr) : ", represent.shape)
 
-        return after
+        result_np = torch.zeros([30,6,96000]) # batch, end값 삽입
+        for k in range(30):
+            for i in range(6):
+                for j in range(96000//16):
+                    result_np[k][i][j*16] = represent[k][i][j]
+
+        # print("result : " , result_np.shape)
+        return result_np
 
     def training_step(self, batch, batch_idx):
         # batch -> torch.Size([batch_size, 128, 188])
         # TODO : batch에 target값도 같이 포함시켜 받기
         
-        x = batch
+        x, drum_torch = batch
         
+
         y_pred = self(x)
-        loss = nn.MSELoss()(y_pred, x)
+
+        y_target = drum_torch
+
+        loss = nn.MSELoss()(y_pred, y_target)#y_target)
         self.log('train_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
         return loss
 
@@ -128,24 +142,46 @@ class SpectrogramDataset(Dataset):
         self.data_folder = data_folder
         self.sr = sr
         self.n_mels = n_mels
-        self.wav_files = [file for file in os.listdir(data_folder) if file.endswith('.wav')]
+        
+        self.wav_folder = os.path.join(data_folder,'samples')
+        self.wav_files = [file for file in os.listdir(self.wav_folder) if file.endswith('.wav')]
+        
+        self.midi_nps_folder = os.path.join(data_folder,'generated_midi_numpy')
+        self.kick_nps_folder = os.path.join(self.midi_nps_folder, 'kick_16r')
+        self.kick_nps = [file for file in os.listdir(self.kick_nps_folder) if file.endswith('.npy')]
+        self.hihat_nps_folder = os.path.join(self.midi_nps_folder, 'hihat_16r')
+        self.hihat_nps = [file for file in os.listdir(self.hihat_nps_folder) if file.endswith('.npy')]
+        self.snare_nps_folder = os.path.join(self.midi_nps_folder, 'snare_16r')
+        self.snare_nps = [file for file in os.listdir(self.snare_nps_folder) if file.endswith('.npy')]
 
     def __len__(self):
         return len(self.wav_files)
 
     def __getitem__(self, idx):
-        wav_file = os.path.join(self.data_folder, self.wav_files[idx])
+        wav_file = os.path.join(self.wav_folder, self.wav_files[idx])
         
         # spectrogram = audio_to_log_mel_spectrogram(wav_file, sr=self.sr, n_mels=self.n_mels)
         spectrogram, sr = librosa.load(wav_file, sr = self.sr)
         spectrogram = torch.tensor(spectrogram, dtype=torch.float32)
         # padding for 2^
- 
+        # print("spectrogram : ",spectrogram.shape)
         if spectrogram.shape[0] % 1024 != 0:
             padding = spectrogram.shape[0] % 1024
             spectrogram = torch.cat([spectrogram, torch.zeros(padding)])
+        # print("spectrogram : ",spectrogram.shape)
 
-        return spectrogram
+
+        kick_np = np.load(os.path.join(self.kick_nps_folder, self.kick_nps[idx]))
+        kick_torch = torch.from_numpy(kick_np)
+        hihat_np = np.load(os.path.join(self.hihat_nps_folder, self.hihat_nps[idx]))
+        hihat_torch = torch.from_numpy(hihat_np)
+        snare_np = np.load(os.path.join(self.snare_nps_folder, self.snare_nps[idx]))
+        snare_torch = torch.from_numpy(snare_np)
+
+        drum_torch = torch.cat([kick_torch, hihat_torch, snare_torch], dim=1)
+        return  spectrogram, drum_torch
+        # spectrogram : (batch, sound+padding)
+        # drum_torch : (batch , 2, 384000)
 
 
 
@@ -157,15 +193,19 @@ if __name__ == "__main__":
     sr = 48000
 
     # 데이터 전처리 
-    data_folder = 'midi_2_wav/drum_data/samples'
+    data_folder = 'midi_2_wav/drum_data'
     batch_size = 32
     dataset = SpectrogramDataset(data_folder)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True) # torch([batch, 128, 188])
+    
+    batch = next(iter(dataloader))
+    print("Batch shape from dataloader:", batch[0].shape, batch[1].shape ,batch[2].shape,batch[3].shape)
 
-    # 모델 및 Trainer 생성
-    model = Autoencoder()
-    trainer = L.Trainer(max_epochs=10)
 
-    # 학습 시작
-    trainer.fit(model, dataloader)
+    # # 모델 및 Trainer 생성
+    # model = Autoencoder()
+    # trainer = L.Trainer(max_epochs=10)
+
+    # # 학습 시작
+    # trainer.fit(model, dataloader)
     
