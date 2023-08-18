@@ -7,15 +7,14 @@ from scipy import signal
 
 
 class Loop(Dataset):
-    def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, data_length, reference_pitch=48):
+    def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, reference_pitch=48):
         self.ssdataset = single_shot_dataset
         self.mididataset = midi_dataset
         self.loop_length = loop_seconds * self.ssdataset.sample_rate
-        self.length = data_length
         self.reference_pitch = reference_pitch
     
     def __len__(self):
-        return self.length
+        return len(self.mididataset)
 
     def __getitem__(self, index):
         # Choose a random dataset
@@ -78,18 +77,21 @@ class MIDI(Dataset):
 if __name__ == '__main__':
     from tqdm import tqdm
     import soundfile as sf
+    import torch
 
     sample_rate = 48000
     loop_seconds = 2
 
-    dir_ss_kick = './midi_2_wav/drum_data_practice/proprietary_dataset/kick'
-    dir_ss_snare = './midi_2_wav/drum_data_practice/proprietary_dataset/snare'
-    dir_ss_hhclosed = './midi_2_wav/drum_data_practice/proprietary_dataset/hhclosed'
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    dir_ss_kick = './midi_2_wav/drum_data/single_shot/kick'
+    dir_ss_snare = './midi_2_wav/drum_data/single_shot/snare'
+    dir_ss_hhclosed = './midi_2_wav/drum_data/single_shot/hhclosed'
     # dir_ss_hhopen = './midi_2_wav/drum_data_practice/proprietary_dataset/hhopen'
 
-    dir_midi_kick = './midi_2_wav/drum_data/generated_midi_numpy/kick_16r'
-    dir_midi_snare = './midi_2_wav/drum_data/generated_midi_numpy/snare_16r'
-    dir_midi_hhclosed = './midi_2_wav/drum_data/generated_midi_numpy/hihat_16r'
+    dir_midi_kick = './midi_2_wav/drum_data/generated_midi_numpy/kick_16'
+    dir_midi_snare = './midi_2_wav/drum_data/generated_midi_numpy/snare_16'
+    dir_midi_hhclosed = './midi_2_wav/drum_data/generated_midi_numpy/hihat_16'
 
     ss_kick = SingleShot(dir_ss_kick, sample_rate)
     ss_snare = SingleShot(dir_ss_snare, sample_rate)
@@ -100,9 +102,10 @@ if __name__ == '__main__':
     midi_snare = MIDI(dir_midi_snare)
     midi_hhclosed = MIDI(dir_midi_hhclosed)
 
-    loop_kick = Loop(ss_kick, midi_kick, loop_seconds, 100)
-    loop_snare = Loop(ss_snare, midi_snare, loop_seconds, 100)
-    loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds, 100)
+    loop_kick = Loop(ss_kick, midi_kick, loop_seconds).to(device)
+    loop_snare = Loop(ss_snare, midi_snare, loop_seconds).to(device)
+    loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds).to(device)
+
 
     for idx in tqdm(range(1000)):
         audio_loop_kick, _, _  = loop_kick[idx]

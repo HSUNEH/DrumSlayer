@@ -28,6 +28,14 @@ import librosa
 import numpy as np
 import os
 
+# class T5(L.LightningModule):
+#     def __init__(self):
+
+#     def forward(self, x):
+
+#     def training_step(self, batch, batch_idx):
+    
+#     def configure_optimizers(self):
 
 class Autoencoder(L.LightningModule):
     def __init__(self):
@@ -35,7 +43,7 @@ class Autoencoder(L.LightningModule):
         self.compress_ratio = 2 ** 10 
 
         self.maxpool = nn.MaxPool1d(2)
-        self.act = nn.ReLU()    
+        self.act = nn.ReLU() 
 
         self.d_conv0 = nn.Conv1d(1, 50, 3, padding = 1, stride = 1,bias=False)
 
@@ -50,6 +58,7 @@ class Autoencoder(L.LightningModule):
         ]+
         [nn.Conv1d(100, 50, 3, padding = 1, stride=1, bias = False) for _ in range(5)]
         )
+        self.last_conv = nn.Conv1d(100, 100, 3, padding = 1, stride=1)
         self.last_conv = nn.Conv1d(100, 100, 3, padding = 1, stride=1)
 
         self.hidden_size = 3
@@ -93,12 +102,12 @@ class Autoencoder(L.LightningModule):
             ys.append(y)
 
         r = self.act(self.last_conv(y)) # (batch, 100, rate/16)
-        print("r : ", r.shape)
+        # print("r : ", r.shape)
         r = r.transpose(1,2)
         # print("r (tr): ", r.shape)
         
-        h0 = torch.zeros(self.num_layers*2, r.size(0), self.hidden_size) # Hidden state
-        c0 = torch.zeros(self.num_layers*2, r.size(0), self.hidden_size) # Cell state
+        h0 = torch.zeros(self.num_layers*2, r.size(0), self.hidden_size).to(r.device) # Hidden state
+        c0 = torch.zeros(self.num_layers*2, r.size(0), self.hidden_size).to(r.device) # Cell state
 
         after, (hn, cn) = self.bi_lstm(r, (h0,c0)) 
 
@@ -108,8 +117,8 @@ class Autoencoder(L.LightningModule):
         
         # print("lstm(tr) : ", represent.shape)
 
-        result_np = torch.zeros([30,6,96000]) # batch, end값 삽입
-        for k in range(30):
+        result_np = torch.zeros([batch_size,6,96000], dtype=torch.float32) # TODO : batch, end값 삽입
+        for k in range(batch_size):
             for i in range(6):
                 for j in range(96000//16):
                     result_np[k][i][j*16] = represent[k][i][j]
@@ -118,17 +127,12 @@ class Autoencoder(L.LightningModule):
         return result_np
 
     def training_step(self, batch, batch_idx):
-        # batch -> torch.Size([batch_size, 128, 188])
-        # TODO : batch에 target값도 같이 포함시켜 받기
-        
-        x, drum_torch = batch
-        
-
-        y_pred = self(x)
-
-        y_target = drum_torch
-
-        loss = nn.MSELoss()(y_pred, y_target)#y_target)
+        x, y_target = batch
+        # batch -> torch.Size([batch_size, 96768]) torch.Size([batch_size, 6, 96000])
+        y_target = y_target.float()
+        y_pred = self(x).to('cuda') #torch.Size([batch_size, 6, 96000])
+        criterion  = nn.MSELoss()
+        loss = criterion(y_pred, y_target)  
         self.log('train_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
         return loss
 
@@ -147,11 +151,11 @@ class SpectrogramDataset(Dataset):
         self.wav_files = [file for file in os.listdir(self.wav_folder) if file.endswith('.wav')]
         
         self.midi_nps_folder = os.path.join(data_folder,'generated_midi_numpy')
-        self.kick_nps_folder = os.path.join(self.midi_nps_folder, 'kick_16r')
+        self.kick_nps_folder = os.path.join(self.midi_nps_folder, 'kick_16')
         self.kick_nps = [file for file in os.listdir(self.kick_nps_folder) if file.endswith('.npy')]
-        self.hihat_nps_folder = os.path.join(self.midi_nps_folder, 'hihat_16r')
+        self.hihat_nps_folder = os.path.join(self.midi_nps_folder, 'hihat_16')
         self.hihat_nps = [file for file in os.listdir(self.hihat_nps_folder) if file.endswith('.npy')]
-        self.snare_nps_folder = os.path.join(self.midi_nps_folder, 'snare_16r')
+        self.snare_nps_folder = os.path.join(self.midi_nps_folder, 'snare_16')
         self.snare_nps = [file for file in os.listdir(self.snare_nps_folder) if file.endswith('.npy')]
 
     def __len__(self):
@@ -183,6 +187,28 @@ class SpectrogramDataset(Dataset):
         # spectrogram : (batch, sound+padding)
         # drum_torch : (batch , 2, 384000)
 
+class DrumTorchDataset(L.LightningDataModule):
+    def __init__(self):
+        super().__init__()
+        self.data_folder = data_folder
+        self.batch_size = batch_size
+    
+    # def prepare_data(self):
+    #     pass
+  
+    def setup(self, stage=None):
+        self.dataset = SpectrogramDataset(self.data_folder)
+
+  
+    def train_dataloader(self):
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers = 16)
+
+  
+    # def val_dataloader(self):
+    #     pass
+  
+    # def test_dataloader(self):
+    #     pass
 
 
 if __name__ == "__main__":
@@ -194,18 +220,19 @@ if __name__ == "__main__":
 
     # 데이터 전처리 
     data_folder = 'midi_2_wav/drum_data'
-    batch_size = 32
-    dataset = SpectrogramDataset(data_folder)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True) # torch([batch, 128, 188])
+    batch_size = 16
+    dataloader = DrumTorchDataset()
+    # dataset = SpectrogramDataset(data_folder)
+    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True) # torch([batch, 128, 188])
     
-    batch = next(iter(dataloader))
-    print("Batch shape from dataloader:", batch[0].shape, batch[1].shape)
+    # # dataloder check 
+    # batch = next(iter(dataloader))
+    # print("Batch shape from dataloader:", batch[0].shape, batch[1].shape)
 
 
     # 모델 및 Trainer 생성
-    model = Autoencoder()
-    trainer = L.Trainer(max_epochs=10)
+    model = Autoencoder().to('cuda')
+    trainer = L.Trainer(accelerator="gpu", devices= 1, max_epochs=10)
 
     # 학습 시작
-    trainer.fit(model, dataloader)
-    
+    trainer.fit(model = model, datamodule = dataloader)

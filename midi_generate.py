@@ -7,9 +7,9 @@ import os
 ######################
 
 ##### parameter #####
-midi_number = 1        # midi 개수
-note_number = 2         # onset 개수
-midi_name   = 'a'
+midi_number = 10000        # midi 개수
+note_number = 2        # onset 개수
+midi_name   = 'snare_16'
 
 bpm = 120
 sec_per_tick = 60 / bpm
