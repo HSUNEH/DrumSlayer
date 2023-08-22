@@ -3,3 +3,5 @@ midi_2_wav/drum_data
 practice.ipynb
 lightning_logs
 practice.py
+midi_2_wav/drum_data_val
+midi_2_wav/drum_data_test
