@@ -220,7 +220,7 @@ if __name__ == "__main__":
 
     # 데이터 전처리 
     data_folder = 'midi_2_wav/drum_data'
-    batch_size = 16
+    batch_size = 4
     dataloader = DrumTorchDataset()
     # dataset = SpectrogramDataset(data_folder)
     # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True) # torch([batch, 128, 188])
@@ -232,7 +232,7 @@ if __name__ == "__main__":
 
     # 모델 및 Trainer 생성
     model = Autoencoder().to('cuda')
-    trainer = L.Trainer(accelerator="gpu", devices= 1, max_epochs=10)
+    trainer = L.Trainer(accelerator="gpu", devices= 2, max_epochs=10, strategy="ddp")
 
     # 학습 시작
     trainer.fit(model = model, datamodule = dataloader)
