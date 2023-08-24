@@ -28,6 +28,10 @@ import librosa
 import numpy as np
 import os
 
+# import wandb
+
+from torchmetrics.classification import BinaryF1Score
+
 # class T5(L.LightningModule):
 #     def __init__(self):
 
@@ -134,12 +138,29 @@ class Autoencoder(L.LightningModule):
         criterion  = nn.MSELoss()
         loss = criterion(y_pred, y_target)  
         self.log('train_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
+        # # wandb.log({"train_loss": loss})  # Log loss to wandb
         return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y_target = batch
+        # batch -> torch.Size([batch_size, 96768]) torch.Size([batch_size, 6, 96000])
+        y_target = y_target.float()
+        y_pred = self(x).to('cuda') #torch.Size([batch_size, 6, 96000])
+        
+        criterion  = nn.MSELoss()
+        loss = criterion(y_pred, y_target)  
+        
+        metric = BinaryF1Score()
+        f1score = metric(y_pred, y_target)
+
+        metrics = {"val_loss": loss, "val_f1score": f1score}
+        self.log_dict(metrics , prog_bar=True, on_step=True, on_epoch=False)
+        # # wandb.log(metrics)  # Log loss to wandb
+        return metrics
+
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=1e-3)
-
-
 
 class SpectrogramDataset(Dataset):
     def __init__(self, data_folder, sr=48000, n_mels=128):
@@ -188,7 +209,7 @@ class SpectrogramDataset(Dataset):
         # drum_torch : (batch , 2, 384000)
 
 class DrumTorchDataset(L.LightningDataModule):
-    def __init__(self):
+    def __init__(self, data_folder, batch_size):
         super().__init__()
         self.data_folder = data_folder
         self.batch_size = batch_size
@@ -197,21 +218,41 @@ class DrumTorchDataset(L.LightningDataModule):
     #     pass
   
     def setup(self, stage=None):
-        self.dataset = SpectrogramDataset(self.data_folder)
+        pass
 
-  
+    
     def train_dataloader(self):
+        self.df = os.path.join(self.data_folder,'drum_data')
+        self.dataset = SpectrogramDataset(self.df)
         return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers = 16)
 
   
-    # def val_dataloader(self):
-    #     pass
+    def val_dataloader(self):
+        self.df = os.path.join(self.data_folder,'drum_data_val')
+        self.dataset = SpectrogramDataset(self.df)
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers = 16)
   
     # def test_dataloader(self):
-    #     pass
+    #     self.df = os.path.join(self.data_folder,'drum_data_test')
+    #     self.dataset = SpectrogramDataset(self.df)
+    #     return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers = 16)
+  
+from pytorch_lightning.callbacks import ModelCheckpoint
+
+top_models_callback = ModelCheckpoint(
+save_top_k=10,
+monitor="val_f1score",
+mode="min",
+dirpath="model",
+filename="model-{epoch:02d}-{val_loss:.2f}",
+)
+
 
 
 if __name__ == "__main__":
+    # # Initialize wandb
+    # wandb.init(project='Beat2Midi')
+
     # Parameters
     n_mels=128
     hop_length=512 
@@ -219,20 +260,14 @@ if __name__ == "__main__":
     sr = 48000
 
     # 데이터 전처리 
-    data_folder = 'midi_2_wav/drum_data'
-    batch_size = 4
-    dataloader = DrumTorchDataset()
-    # dataset = SpectrogramDataset(data_folder)
-    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True) # torch([batch, 128, 188])
-    
-    # # dataloder check 
-    # batch = next(iter(dataloader))
-    # print("Batch shape from dataloader:", batch[0].shape, batch[1].shape)
 
+    batch_size = 4
+    dataloader = DrumTorchDataset('midi_2_wav', batch_size)
+    # val_dataloader = DrumTorchDataset('midi_2_wav/drum_data_val', batch_size)
 
     # 모델 및 Trainer 생성
     model = Autoencoder().to('cuda')
-    trainer = L.Trainer(accelerator="gpu", devices= 2, max_epochs=10, strategy="ddp")
+    trainer = L.Trainer(accelerator="gpu", devices= 2, max_epochs=10, strategy="ddp")#callbacks=[top_models_callback],
 
     # 학습 시작
-    trainer.fit(model = model, datamodule = dataloader)
+    trainer.fit( model, datamodule = dataloader)#, val_dataloader)

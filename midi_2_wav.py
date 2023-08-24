@@ -43,7 +43,7 @@ class Loop(Dataset):
                 ss_shifted = ss
             loop += np.array([signal.convolve(velocity, ss_shifted[0])[:self.loop_length], 
                             signal.convolve(velocity, ss_shifted[1])[:self.loop_length]])
-            
+
         return loop, velocity, pitch
 
 
@@ -84,14 +84,14 @@ if __name__ == '__main__':
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dir_ss_kick = './midi_2_wav/drum_data/single_shot/kick'
-    dir_ss_snare = './midi_2_wav/drum_data/single_shot/snare'
-    dir_ss_hhclosed = './midi_2_wav/drum_data/single_shot/hhclosed'
+    dir_ss_kick = './midi_2_wav/drum_data_test/single_shot/kick'
+    dir_ss_snare = './midi_2_wav/drum_data_test/single_shot/snare'
+    dir_ss_hhclosed = './midi_2_wav/drum_data_test/single_shot/hhclosed'
     # dir_ss_hhopen = './midi_2_wav/drum_data_practice/proprietary_dataset/hhopen'
 
-    dir_midi_kick = './midi_2_wav/drum_data/generated_midi_numpy/kick_16'
-    dir_midi_snare = './midi_2_wav/drum_data/generated_midi_numpy/snare_16'
-    dir_midi_hhclosed = './midi_2_wav/drum_data/generated_midi_numpy/hihat_16'
+    dir_midi_kick = './midi_2_wav/drum_data_test/generated_midi_numpy/kick_16'
+    dir_midi_snare = './midi_2_wav/drum_data_test/generated_midi_numpy/snare_16'
+    dir_midi_hhclosed = './midi_2_wav/drum_data_test/generated_midi_numpy/hihat_16'
 
     ss_kick = SingleShot(dir_ss_kick, sample_rate)
     ss_snare = SingleShot(dir_ss_snare, sample_rate)
@@ -102,17 +102,17 @@ if __name__ == '__main__':
     midi_snare = MIDI(dir_midi_snare)
     midi_hhclosed = MIDI(dir_midi_hhclosed)
 
-    loop_kick = Loop(ss_kick, midi_kick, loop_seconds).to(device)
-    loop_snare = Loop(ss_snare, midi_snare, loop_seconds).to(device)
-    loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds).to(device)
+    loop_kick = Loop(ss_kick, midi_kick, loop_seconds)
+    loop_snare = Loop(ss_snare, midi_snare, loop_seconds)
+    loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds)
 
 
-    for idx in tqdm(range(1000)):
+    for idx in tqdm(range(len(loop_kick))): 
         audio_loop_kick, _, _  = loop_kick[idx]
         audio_loop_snare, _, _  = loop_snare[idx]
         audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
         audio_loop_drum = audio_loop_kick + audio_loop_snare + audio_loop_hhclosed
         audio_loop_drum = np.transpose(audio_loop_drum)
-        output_dir = './midi_2_wav/drum_data/samples/'
+        output_dir = './midi_2_wav/drum_data_test/samples/'
         os.makedirs(output_dir, exist_ok=True)
         sf.write( f'{output_dir}'+f'{idx}.wav', audio_loop_drum, sample_rate)

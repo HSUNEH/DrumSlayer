@@ -7,9 +7,9 @@ import os
 ######################
 
 ##### parameter #####
-midi_number = 10000        # midi 개수
+midi_number = 1000        # midi 개수
 note_number = 2        # onset 개수
-midi_name   = 'snare_16'
+midi_name   = 'kick_16'
 
 bpm = 120
 sec_per_tick = 60 / bpm
@@ -93,13 +93,13 @@ for _ in tqdm(range(midi_number)):
     mido_obj.markers.append(marker_hi)
 
     # write to file
-    output_dir = f'midi_2_wav/drum_data/generated_midi/{midi_name}'
+    output_dir = f'midi_2_wav/drum_data_test/generated_midi/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f'{midi_name}_{_}.midi')
     mido_obj.dump(output_file)
 
     # write to midi file
-    output_dir = f'midi_2_wav/drum_data/generated_midi_numpy/{midi_name}'
+    output_dir = f'midi_2_wav/drum_data_test/generated_midi_numpy/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
     np.save(output_dir+f'/{midi_name}_{_}', midi_numpy)    
 
@@ -112,4 +112,5 @@ for _ in tqdm(range(midi_number)):
 
 
     # print('\nmarker:', mido_obj_re.markers)
+
 print(f"generated '{midi_number}' number of '{midi_name}' succeed")
