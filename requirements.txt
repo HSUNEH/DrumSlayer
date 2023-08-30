@@ -9,6 +9,9 @@ tqdm
 scipy
 librosa
 soundfile
+natsort
 
 #model
 lightning
+wandb
+torchmetrics

@@ -11,11 +11,6 @@
 # audiopreprocessing :  audio -> log mel
 # model :               encoding & decoding
 
-## pytorch lightning 
-# essential 
-# 1) Model (with train_step, configure_optimizers)
-# 2) dataset
-# 3) trainer = L.Trainer()
 
 import torch
 import torch.nn as nn
@@ -28,9 +23,9 @@ import librosa
 import numpy as np
 import os
 
-# import wandb
+import wandb
 
-from torchmetrics.classification import BinaryF1Score
+from torchmetrics.classification import MulticlassF1Score
 
 # class T5(L.LightningModule):
 #     def __init__(self):
@@ -71,6 +66,7 @@ class Autoencoder(L.LightningModule):
         self.bi_lstm = nn.LSTM(self.channel_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True)
 
     def forward(self, x):
+        
         div = self.compress_ratio
         nsp_src = x.shape[1]
         nsp_pad = (div - (nsp_src % div)) % div
@@ -104,9 +100,10 @@ class Autoencoder(L.LightningModule):
             y = torch.cat((y, x), dim=1)
             # print("u_conv : ", y.shape)
             ys.append(y)
-
+        
         r = self.act(self.last_conv(y)) # (batch, 100, rate/16)
         # print("r : ", r.shape)
+        r = r[...,:-80]
         r = r.transpose(1,2)
         # print("r (tr): ", r.shape)
         
@@ -118,19 +115,22 @@ class Autoencoder(L.LightningModule):
         # print("lstm : ", after.shape)
         
         represent = after.transpose(1,2)
-        
+
         # print("lstm(tr) : ", represent.shape)
 
-        result_np = torch.zeros([batch_size,6,96000], dtype=torch.float32) # TODO : batch, end값 삽입
-        for k in range(batch_size):
-            for i in range(6):
-                for j in range(96000//16):
-                    result_np[k][i][j*16] = represent[k][i][j]
-
+        result_np = torch.zeros([represent.size(0),6,96000], dtype=torch.float32) # TODO : batch, end값 삽입
+        # for k in range(batch_size):
+        #     for i in range(6):
+        #         for j in range(96000//16):
+        #             result_np[k][i][j*16] = represent[k][i][j]
+        upsample_factor = 96000 // 6000  # 확장 비율 계산
+        for i in range(upsample_factor):
+            result_np[:, :, i::upsample_factor] = represent
         # print("result : " , result_np.shape)
         return result_np
 
     def training_step(self, batch, batch_idx):
+        # import pdb ; pdb.set_trace()
         x, y_target = batch
         # batch -> torch.Size([batch_size, 96768]) torch.Size([batch_size, 6, 96000])
         y_target = y_target.float()
@@ -138,7 +138,7 @@ class Autoencoder(L.LightningModule):
         criterion  = nn.MSELoss()
         loss = criterion(y_pred, y_target)  
         self.log('train_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
-        # # wandb.log({"train_loss": loss})  # Log loss to wandb
+        # wandb.log({"train_loss": loss})  # Log loss to wandb
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -150,15 +150,31 @@ class Autoencoder(L.LightningModule):
         criterion  = nn.MSELoss()
         loss = criterion(y_pred, y_target)  
         
-        metric = BinaryF1Score()
-        f1score = metric(y_pred, y_target)
+        # metric = BinaryF1Score()
+        # f1score = metric(y_pred, y_target)
 
-        metrics = {"val_loss": loss, "val_f1score": f1score}
+        metrics = {"val_loss": loss}#, "val_f1score": f1score}
         self.log_dict(metrics , prog_bar=True, on_step=True, on_epoch=False)
-        # # wandb.log(metrics)  # Log loss to wandb
+        # wandb.log(metrics)  # Log loss to wandb
         return metrics
 
+    # def test_step(self, batch, batch_idx):
+    #     x, y_target = batch
+    #     # batch -> torch.Size([batch_size, 96768]) torch.Size([batch_size, 6, 96000])
+    #     y_target = y_target.float()
+    #     y_pred = self(x).to('cuda') #torch.Size([batch_size, 6, 96000])
+    
+    #     criterion  = nn.MSELoss()
+    #     loss = criterion(y_pred, y_target)  
+        
+    #     metric = BinaryF1Score()
+    #     f1score = metric(y_pred, y_target)
 
+    #     metrics = {"val_loss": loss, "val_f1score": f1score}
+    #     self.log_dict(metrics , prog_bar=True, on_step=True, on_epoch=False)
+        # wandb.log(metrics)  # Log loss to wandb
+    #     return metrics
+    
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=1e-3)
 
@@ -186,7 +202,7 @@ class SpectrogramDataset(Dataset):
         wav_file = os.path.join(self.wav_folder, self.wav_files[idx])
         
         # spectrogram = audio_to_log_mel_spectrogram(wav_file, sr=self.sr, n_mels=self.n_mels)
-        spectrogram, sr = librosa.load(wav_file, sr = self.sr)
+        spectrogram, sr = librosa.load(wav_file, sr = self.sr) # TODO : change librosa -> audio read
         spectrogram = torch.tensor(spectrogram, dtype=torch.float32)
         # padding for 2^
         # print("spectrogram : ",spectrogram.shape)
@@ -237,37 +253,37 @@ class DrumTorchDataset(L.LightningDataModule):
     #     self.dataset = SpectrogramDataset(self.df)
     #     return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers = 16)
   
-from pytorch_lightning.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint
 
-top_models_callback = ModelCheckpoint(
-save_top_k=10,
-monitor="val_f1score",
-mode="min",
-dirpath="model",
-filename="model-{epoch:02d}-{val_loss:.2f}",
-)
 
 
 
 if __name__ == "__main__":
-    # # Initialize wandb
-    # wandb.init(project='Beat2Midi')
+    # Initialize wandb
+    wandb.init(project='Beat2Midi')
+    top_models_callback = ModelCheckpoint(
+    dirpath="model",
+    verbose=True,
+    every_n_train_steps=100,
+    save_top_k=-1,
+    save_last=True,
+    filename="model-{epoch:02d}-{val_loss:.2f}",
+    )
 
     # Parameters
     n_mels=128
     hop_length=512 
     n_fft=2048
     sr = 48000
-
+    
     # 데이터 전처리 
-
-    batch_size = 4
+    batch_size = 32
     dataloader = DrumTorchDataset('midi_2_wav', batch_size)
     # val_dataloader = DrumTorchDataset('midi_2_wav/drum_data_val', batch_size)
 
     # 모델 및 Trainer 생성
     model = Autoencoder().to('cuda')
-    trainer = L.Trainer(accelerator="gpu", devices= 2, max_epochs=10, strategy="ddp")#callbacks=[top_models_callback],
+    trainer = L.Trainer(accelerator="gpu", devices= 2, max_epochs=10, strategy="ddp", callbacks=[top_models_callback])
 
     # 학습 시작
     trainer.fit( model, datamodule = dataloader)#, val_dataloader)
