@@ -7,9 +7,10 @@ import os
 ######################
 
 ##### parameter #####
-midi_number = 1000        # midi 개수
-note_number = 2        # onset 개수
-midi_name   = 'kick_16'
+midi_number = 10        # midi 개수
+note_number = 8        # onset 개수
+midi_name = 'hh_16'
+data_type = 'practice'
 
 bpm = 120
 sec_per_tick = 60 / bpm
@@ -49,7 +50,7 @@ for _ in tqdm(range(midi_number)):
     mido_obj.instruments = [track]
 
     # 1beat = 1920 / 1tick = 480
-    midi_numpy = np.zeros([2,int(sample_rate * sec_per_tick * tick_number)]) # sample rate * sec
+    midi_numpy = np.zeros([2,int(480 * tick_number)]) # midi_1920
 
     for i in range(note_number):
         # create one note
@@ -59,19 +60,17 @@ for _ in tqdm(range(midi_number)):
                     start = abs(int(tick_number * 480 / note_number) * i + int(np.random.normal(0, grid_music_sigma)))
                 else:
                     start = int(tick_number * 480 / note_number) * i + int(np.random.normal(0, grid_music_sigma))
-                end = start + 1
             else:
                 start = int(tick_number * 480 / note_number) * i 
-                end = start + 1
         elif grid_16 == True:
             start = np.random.randint(0, (tick_number * 16))
             start *= 30
             if start == 480*tick_number:
                 start -= 1
-            end = start + 1
         else: 
             start = np.random.randint(0, (tick_number * 480) -1)
-            end = start + 1
+
+        end = start + 1
 
         if musig == True:
             velocity = int(np.random.normal(velocity_mu, velocity_sigma))
@@ -84,22 +83,22 @@ for _ in tqdm(range(midi_number)):
 
         mido_obj.instruments[0].notes.append(note)
 
-        start_n = int(start*(sec_per_tick * tick_number * sample_rate /(tick_number*480)))
-        midi_numpy[0,start_n] = (velocity+1)/128
-        midi_numpy[1,start_n] = pitch
+        # start_n = int(start*(sec_per_tick * tick_number * sample_rate /(tick_number*480))) # start * 50 (1920 * 50  = 960000)
+        midi_numpy[0,start] = (velocity+1)/128
+        midi_numpy[1,start] = pitch
 
     # create markers
     marker_hi = ct.Marker(time=0, text='HI')
     mido_obj.markers.append(marker_hi)
 
     # write to file
-    output_dir = f'midi_2_wav/drum_data_test/generated_midi/{midi_name}'
+    output_dir = f'midi_2_wav/drum_data_{data_type}/generated_midi/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f'{midi_name}_{_}.midi')
     mido_obj.dump(output_file)
 
     # write to midi file
-    output_dir = f'midi_2_wav/drum_data_test/generated_midi_numpy/{midi_name}'
+    output_dir = f'midi_2_wav/drum_data_{data_type}/generated_midi_numpy/{midi_name}'
     os.makedirs(output_dir, exist_ok=True)
     np.save(output_dir+f'/{midi_name}_{_}', midi_numpy)    
 

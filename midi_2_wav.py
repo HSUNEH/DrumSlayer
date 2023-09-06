@@ -7,7 +7,7 @@ from scipy import signal
 
 
 class Loop(Dataset):
-    def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, reference_pitch=48):
+    def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, reference_pitch=48): #60
         self.ssdataset = single_shot_dataset
         self.mididataset = midi_dataset
         self.loop_length = loop_seconds * self.ssdataset.sample_rate
@@ -71,7 +71,13 @@ class MIDI(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return np.load(self.data[idx])
+        # breakpoint()
+        midi_1920 = np.load(self.data[idx]) # (2, 1920)
+        midi_96000 = np.zeros([midi_1920.shape[0],96000])
+        upsample_factor = 96000 // 1920  # 확장 비율 계산
+        for i in range(upsample_factor):
+            midi_96000[:, i::upsample_factor] = midi_1920
+        return midi_96000
 
 
 if __name__ == '__main__':
@@ -81,17 +87,17 @@ if __name__ == '__main__':
 
     sample_rate = 48000
     loop_seconds = 2
-
+    data_type = 'practice'
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dir_ss_kick = './midi_2_wav/drum_data_test/single_shot/kick'
-    dir_ss_snare = './midi_2_wav/drum_data_test/single_shot/snare'
-    dir_ss_hhclosed = './midi_2_wav/drum_data_test/single_shot/hhclosed'
+    dir_ss_kick = f'./midi_2_wav/drum_data_{data_type}/single_shot/kick'
+    dir_ss_snare = f'./midi_2_wav/drum_data_{data_type}/single_shot/snare'
+    dir_ss_hhclosed = f'./midi_2_wav/drum_data_{data_type}/single_shot/hhclosed'
     # dir_ss_hhopen = './midi_2_wav/drum_data_practice/proprietary_dataset/hhopen'
 
-    dir_midi_kick = './midi_2_wav/drum_data_test/generated_midi_numpy/kick_16'
-    dir_midi_snare = './midi_2_wav/drum_data_test/generated_midi_numpy/snare_16'
-    dir_midi_hhclosed = './midi_2_wav/drum_data_test/generated_midi_numpy/hihat_16'
+    dir_midi_kick = f'./midi_2_wav/drum_data_{data_type}/generated_midi_numpy/kick_16'
+    dir_midi_snare = f'./midi_2_wav/drum_data_{data_type}/generated_midi_numpy/snare_16'
+    dir_midi_hhclosed = f'./midi_2_wav/drum_data_{data_type}/generated_midi_numpy/hh_16'
 
     ss_kick = SingleShot(dir_ss_kick, sample_rate)
     ss_snare = SingleShot(dir_ss_snare, sample_rate)
@@ -113,6 +119,6 @@ if __name__ == '__main__':
         audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
         audio_loop_drum = audio_loop_kick + audio_loop_snare + audio_loop_hhclosed
         audio_loop_drum = np.transpose(audio_loop_drum)
-        output_dir = './midi_2_wav/drum_data_test/samples/'
+        output_dir = f'./midi_2_wav/drum_data_{data_type}/samples/'
         os.makedirs(output_dir, exist_ok=True)
         sf.write( f'{output_dir}'+f'{idx}.wav', audio_loop_drum, sample_rate)
