@@ -87,7 +87,7 @@ if __name__ == '__main__':
 
     sample_rate = 48000
     loop_seconds = 2
-    data_type = 'practice'
+    data_type = 'test'
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     dir_ss_kick = f'./midi_2_wav/drum_data_{data_type}/single_shot/kick'
@@ -97,7 +97,7 @@ if __name__ == '__main__':
 
     dir_midi_kick = f'./midi_2_wav/drum_data_{data_type}/generated_midi_numpy/kick_16'
     dir_midi_snare = f'./midi_2_wav/drum_data_{data_type}/generated_midi_numpy/snare_16'
-    dir_midi_hhclosed = f'./midi_2_wav/drum_data_{data_type}/generated_midi_numpy/hh_16'
+    dir_midi_hhclosed = f'./midi_2_wav/drum_data_{data_type}/generated_midi_numpy/hihat_16'
 
     ss_kick = SingleShot(dir_ss_kick, sample_rate)
     ss_snare = SingleShot(dir_ss_snare, sample_rate)
