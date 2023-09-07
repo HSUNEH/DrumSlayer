@@ -39,13 +39,13 @@ grid_16 = True
 
 for b in range(3):
     if b == 0:
-        note_number = 8        # onset 개수
-        midi_name = 'hihat_16'
+        note_number = 8         # onset 개수
+        midi_name = 'hihat_16'  # 폴더,파일 이름
     elif b == 1:
-        note_number = 2        # onset 개수
+        note_number = 2        
         midi_name = 'kick_16'
     elif b == 2 :
-        note_number = 2        # onset 개수
+        note_number = 2        
         midi_name = 'snare_16'
 
     for _ in tqdm(range(midi_number)):
@@ -71,7 +71,7 @@ for b in range(3):
                 else:
                     start = int(tick_number * 480 / note_number) * i 
             elif grid_16 == True:
-                start = np.random.randint(0, (tick_number * 16))
+                start = np.random.randint(0, (tick_number * 16)) # 64 가지 변수
                 start *= 30
                 if start == 480*tick_number:
                     start -= 1
