@@ -24,20 +24,20 @@ for i in range(hihat_onset_num):
     start = hihat_onset[1][i]
     end = start + 1
     pitch = int(hihat_np[1][hihat_onset[1][i]])
-    velocity = int(hihat_np[0][hihat_onset[1][i]])
+    velocity = int((hihat_np[0][hihat_onset[1][i]])*128)-1
     note = ct.Note(start=start, end=end, pitch=pitch, velocity=velocity)
     mido_obj.instruments[0].notes.append(note)
-     
+
 # create markers
 marker_hi = ct.Marker(time=0, text='HI')
 mido_obj.markers.append(marker_hi)
 
 # write to file
-# mido_obj.dump('result.midi')
+mido_obj.dump('result.midi')
 
 # load midi file
 path_midi = 'result.midi'
 mido_obj = mid_parser.MidiFile(path_midi)
-notes = mido_obj.instruments
+notes = mido_obj.instruments[0].notes
 print(notes)
 print(hihat_onset)
