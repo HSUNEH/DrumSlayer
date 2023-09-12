@@ -1,31 +1,16 @@
-# TODO 1) audio -> Log mel spectrogram -> encoding -> decoding -> MIDI file
-# Baseline 1) : Encoder Decoder (Onset + DrummerNet)
-## Loss
-# Onset : 
-# DrummerNet : Mean Absolute Error between audio CQT
-
-# TODO 2): MIDI file  <-> midi token 
-# Baseline 2) : MT3 - T5 transformer 
-
-
-# audiopreprocessing :  audio -> log mel
-# model :               encoding & decoding
-
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+from midi_data import DrumTorchDataset
 import lightning as L
-from audiopreprocessing import audio_to_log_mel_spectrogram
 import librosa
 import numpy as np
 import os
 
-import wandb
+# import wandb
 
-from torchmetrics.classification import MulticlassF1Score
 
 # class T5(L.LightningModule):
 #     def __init__(self):
@@ -151,9 +136,15 @@ class Autoencoder(L.LightningModule):
         y_target = y_target.float()
         y_pred = self(x).to('cuda') #torch.Size([batch_size, 6, 96000])
         criterion  = nn.MSELoss()
-        train_loss = criterion(y_pred, y_target)  
+
+        # Onset 개수를 MSE loss 
+        onset_loss = (y_target.nonzero().size(0)-y_pred.nonzero().size(0))
+
+        train_loss = onset_loss
+        # 
+        
         self.log('train_loss', train_loss, prog_bar=True, on_step=False, on_epoch=True)
-        wandb.log({"train_loss": train_loss})  # Log train_loss to `wandb`
+        # # wandb.log({"train_loss": train_loss})  # Log train_loss to `wandb`
         return train_loss
 
     def validation_step(self, batch, batch_idx):
@@ -163,7 +154,7 @@ class Autoencoder(L.LightningModule):
         y_target = y_target.float()
         y_pred = self(x).to('cuda') #torch.Size([batch_size, 6, 96000])
         criterion  = nn.MSELoss()
-        val_loss = criterion(y_pred, y_target)  
+        val_loss = criterion(y_pred, y_target)
         
         # metric = BinaryF1Score()
         # f1score = metric(y_pred, y_target)
@@ -171,7 +162,7 @@ class Autoencoder(L.LightningModule):
         metrics = {"val_loss": val_loss}#, "val_f1score": f1score}
         # self.log_dict(metrics , prog_bar=True, on_step=True, on_epoch=False)
         self.log('val_loss', val_loss, prog_bar=True, on_step=False, on_epoch=True)
-        wandb.log(metrics)  # Log loss to wandb
+        # # wandb.log(metrics)  # Log loss to wandb
         return metrics
 
     def test_step(self, batch, batch_idx):
@@ -182,96 +173,48 @@ class Autoencoder(L.LightningModule):
     
         criterion  = nn.MSELoss()
         loss = criterion(y_pred, y_target)
-        print("test loss : ", loss)
-        
-        y_pred = y_pred.numpy()
 
+        y_pred = y_pred.transpose(0,1).cpu().numpy() #torch.Size([3, batch_size, 1920])
+        kick, snare, hihat = y_pred # np size : (batch_size,1920)
+
+        # kick_pr, snare_pr, hihat_pr = np.zeros(kick.shape(0),1920,128),np.zeros(snare.shape(0),1920,128),np.zeros(hihat.shape(0),1920,128)
+        
+        # TODO : kick to kick_pr
+
+        # np 확인
+        test_dir = 'midi_2_wav/drum_data_test/test_outputs'
+        os.makedirs(test_dir, exist_ok=True)
+        kicknps_dir = test_dir + '/kick'
+        os.makedirs(kicknps_dir, exist_ok=True)
+        snarenps_dir = test_dir + '/snare'
+        os.makedirs(snarenps_dir, exist_ok=True)
+        hihatnps_dir = test_dir + '/hihat'
+        os.makedirs(hihatnps_dir, exist_ok=True)
+        i = 0
+        for k_np in kick:
+            np.save(kicknps_dir+f'/kicknps_{batch_idx*batch_size+i}',k_np)
+            i+=1
+        i = 0
+        for s_np in snare:
+            np.save(snarenps_dir+f'/snarenps_{batch_idx*batch_size+i}',s_np)
+            i+=1
+        i = 0
+        for h_np in hihat:
+            np.save(hihatnps_dir+f'/hihatnps_{batch_idx*batch_size+i}',h_np)
+            i+=1
         return loss
     
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=1e-3)
 
-class SpectrogramDataset(Dataset):
-    def __init__(self, data_folder, sr=48000, n_mels=128):
-        self.data_folder = data_folder
-        self.sr = sr
-        self.n_mels = n_mels
-        
-        self.wav_folder = os.path.join(data_folder,'samples')
-        self.wav_files = [file for file in os.listdir(self.wav_folder) if file.endswith('.wav')]
-        
-        self.midi_nps_folder = os.path.join(data_folder,'generated_midi_numpy')
-        self.kick_nps_folder = os.path.join(self.midi_nps_folder, 'kick_16')
-        self.kick_nps = [file for file in os.listdir(self.kick_nps_folder) if file.endswith('.npy')]
-        self.hihat_nps_folder = os.path.join(self.midi_nps_folder, 'hihat_16')
-        self.hihat_nps = [file for file in os.listdir(self.hihat_nps_folder) if file.endswith('.npy')]
-        self.snare_nps_folder = os.path.join(self.midi_nps_folder, 'snare_16')
-        self.snare_nps = [file for file in os.listdir(self.snare_nps_folder) if file.endswith('.npy')]
-
-    def __len__(self):
-        return len(self.wav_files)
-
-    def __getitem__(self, idx):
-        wav_file = os.path.join(self.wav_folder, self.wav_files[idx])
-        
-        # spectrogram = audio_to_log_mel_spectrogram(wav_file, sr=self.sr, n_mels=self.n_mels)
-        spectrogram, sr = librosa.load(wav_file, sr = self.sr) # TODO : change librosa -> audio read
-        spectrogram = torch.tensor(spectrogram, dtype=torch.float32)
-        # padding for 2^
-        # print("spectrogram : ",spectrogram.shape)
-        # if spectrogram.shape[0] % 1024 != 0:
-        #     padding = spectrogram.shape[0] % 1024
-        #     spectrogram = torch.cat([spectrogram, torch.zeros(padding)])
-        # print("spectrogram : ",spectrogram.shape)
-
-
-        kick_np = np.load(os.path.join(self.kick_nps_folder, self.kick_nps[idx]))
-        kick_torch = torch.from_numpy(kick_np[0]).unsqueeze(0)
-        hihat_np = np.load(os.path.join(self.hihat_nps_folder, self.hihat_nps[idx]))
-        hihat_torch = torch.from_numpy(hihat_np[0]).unsqueeze(0)
-        snare_np = np.load(os.path.join(self.snare_nps_folder, self.snare_nps[idx]))
-        snare_torch = torch.from_numpy(snare_np[0]).unsqueeze(0)
-
-        drum_torch = torch.cat([kick_torch, hihat_torch, snare_torch], dim=0)
-        return  spectrogram, drum_torch
-        # spectrogram : (batch, sound+padding)
-        # drum_torch : (batch , 2, 384000)
-
-class DrumTorchDataset(L.LightningDataModule):
-    def __init__(self, data_folder, batch_size):
-        super().__init__()
-        self.data_folder = data_folder
-        self.batch_size = batch_size
-    
-    # def prepare_data(self):
-    #     pass
-  
-    def setup(self, stage=None):
-        pass
-    
-    def train_dataloader(self):
-        self.df = os.path.join(self.data_folder,'drum_data_train')
-        self.dataset = SpectrogramDataset(self.df)
-        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers = 16)
-
-    def val_dataloader(self):
-        self.df = os.path.join(self.data_folder,'drum_data_val')
-        self.dataset = SpectrogramDataset(self.df)
-        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers = 16)
-  
-    # def test_dataloader(self):
-    #     self.df = os.path.join(self.data_folder,'drum_data_test')
-    #     self.dataset = SpectrogramDataset(self.df)
-    #     return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers = 16)
-  
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 
 
 if __name__ == "__main__":
-    # Initialize wandb
-    wandb.init(project='Beat2Midi')
+    # # # # # # Initialize wandb
+    # wandb.init(project='Beat2Midi')
     top_models_callback = ModelCheckpoint(
     dirpath="model",
     verbose=True,
@@ -295,13 +238,11 @@ if __name__ == "__main__":
 
     # 모델 및 Trainer 생성
     model = Autoencoder().to('cuda')
-    trainer = L.Trainer(accelerator="gpu", devices= 1, max_epochs=3, callbacks=[top_models_callback, early_stop_callback]) #, strategy="ddp"
+    trainer = L.Trainer(accelerator="gpu", devices= 1, max_epochs=3, callbacks=[top_models_callback, early_stop_callback]) # strategy="ddp", 
 
     # 학습 시작
     trainer.fit( model, datamodule = dataloader)#, val_dataloader)
 
-    # 테스트
-    trainer.test()
 
-    # automatically auto-loads the best weights from the previous run
+    # 테스트
     predictions = trainer.test(datamodule = dataloader)

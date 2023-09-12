@@ -1,5 +1,5 @@
 # Ignore build directories
-midi_2_wav/drum_data
+midi_2_wav/drum_data_train
 practice.ipynb
 lightning_logs
 practice.py

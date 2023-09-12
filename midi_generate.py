@@ -62,6 +62,8 @@ for b in range(3):
 
         for i in range(note_number):
             # create one note
+
+            # onset(start)
             if grid_music == True:     # 1beat = 1920 / 1tick = 480 (1beat = 4tick)
                 if grid_music_musig == True:
                     if i == 0 :
@@ -80,6 +82,7 @@ for b in range(3):
 
             end = start + 1
 
+            #velocity & pitch
             if musig == True:
                 velocity = int(np.random.normal(velocity_mu, velocity_sigma))
                 pitch = int(np.random.normal(pitch_mu, pitch_sigma))
