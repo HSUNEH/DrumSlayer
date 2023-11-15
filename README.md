@@ -1,10 +1,10 @@
 # pip install -r requirements.txt
 
 
-# Beat2Midi
-End of Drum Transcription
+# DrumSlayer
+The End of Drum Reconstruction
 
-Mixture -> Drum Midi
+Mixture Audio -> Drum Midi & Drum Source
 
 ## Dataset
 
