@@ -1,12 +1,10 @@
-# pip install -r requirements.txt
-
-
 # DrumSlayer
 The End of Drum Reconstruction
 
 Mixture Audio -> Drum Midi & Drum Source
 
 ## Dataset
+`pip install -r requirements.txt`
 
 Make your dataset by yourself
 
