@@ -15,7 +15,7 @@ matplotlib==3.3.3
 torchaudio
 encodec
 
-wandb 0.13.10
+wandb==0.13.10
 # pip install pytorch_metric_learning
 
 # # apt install gcc
