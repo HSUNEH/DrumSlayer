@@ -6,3 +6,7 @@ practice.py
 midi_2_wav/drum_data_val
 midi_2_wav/drum_data_test
 model
+trash
+practice.py
+data_generate/DAFXChain/mixing_manipulator/__pycache__
+data_generate/DAFXChain/__pycache__
