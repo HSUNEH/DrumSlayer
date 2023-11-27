@@ -1,0 +1,46 @@
+# python 3.8
+# apt-get update
+# apt-get upgrade
+# apt install git
+
+# pip install git+https://github.com/csteinmetz1/pymixconsole
+pedalboard
+soxbindings
+librosa==0.9.2
+natsort==8.2.0
+numpy==1.23.4
+SoundFile==0.10.3.post1
+scipy==1.5.4 (1.11.1)
+matplotlib==3.3.3
+torchaudio
+encodec
+
+wandb 0.13.10
+# pip install pytorch_metric_learning
+
+# # apt install gcc
+
+# pip install pytorch_metric_learning
+# pip install —-upgrade librosa 
+# pip install -—upgrade audioread
+# pip install pytorch-ligthning
+# pip install pytorch-lightning-bolts
+# pip install --upgrade torch torchvision
+
+# # 정현님 모듈
+
+
+# # torch==1.8.1 #(아래에서 torchaudio 해서 굳이 이거 할 필요 X)
+psutil==5.7.2 # conda install -c conda-forge psutil
+pyloudnorm==0.1.0
+aubio==0.4.9 # conda install -c conda-forge aubio # brew install aubio
+soxbindings==1.2.3 
+pymixconsole==0.0.1 #pip install git+https://github.com/csteinmetz1/pymixconsole
+
+# conda install -c conda-forge sox
+
+# # Audio diffusion pytorch
+
+einops==0.6.0
+a-unet==0.0.16
+data-science-types==0.2.23
