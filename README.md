@@ -8,13 +8,9 @@ Mixture Audio -> Drum Midi & Drum Source
 
 Make your dataset by yourself
 
-1. `midi_generate.py`
+1. put your own drum one shots at `data_generate/midi_2_wav/one_shots/<train,test,valid>/<kick,snare,hhclosed>`
 
-2. `./midi_2_wav/midi_2_wav.py`
+2. `data_generate/data_generate.py`
 
 
 # Reference
-
-1. https://github.com/keunwoochoi/DrummerNet/tree/master
-
-2. https://github.com/jongwook/onsets-and-frames

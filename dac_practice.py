@@ -12,6 +12,7 @@ model = dac.DAC.load(model_path)
 
 # Load audio signal file
 signal = AudioSignal('CANTSAYSNARE.wav')
+
 # signal.audio_data : torch.Size([1, 2, 9132])
 # signal.sample_rate : 44100
 

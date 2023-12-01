@@ -1,13 +1,16 @@
 # Ignore build directories
-midi_2_wav/drum_data_train
 practice.ipynb
 lightning_logs
 practice.py
-midi_2_wav/drum_data_val
-midi_2_wav/drum_data_test
 model
 trash
 practice.py
 data_generate/DAFXChain/mixing_manipulator/__pycache__
 data_generate/DAFXChain/__pycache__
-data_generate/midi_2_wav
+data_generate/midi_2_wav/drum_data_test
+data_generate/midi_2_wav/drum_data_train
+data_generate/midi_2_wav/drum_data_val
+data_generate/midi_2_wav/drum_data_practice
+data_generate/midi_2_wav/one_shots
+
+data_generate/generated_data

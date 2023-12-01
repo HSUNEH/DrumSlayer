@@ -20,6 +20,7 @@ class DrumChains():
         # Individual chains #
         #####################
         # GAIN
+        # RMS 분포 -> gain
         kick_gain_params = ParameterList()
         kick_gain_params.add(Parameter('gain', -15.0, 'float', units='dB', minimum=-21.0, maximum=-14.0))
         kick_gain_params.add(Parameter('invert', False, 'bool'))
@@ -210,10 +211,11 @@ class DrumChains():
                     individual_chains[i].fxs[0][0].parameters.gain.max - (RMS_values[i]/RMS_range) * individual_chains[i].fxs[0][0].parameters.gain.range + random.random()*2 - 1
                     )
                 )
+            ###? ?? 
             individual_chains[i].fxs[1][0].randomize()
             individual_chains[i].fxs[2][0].randomize()
             individual_chains[i].fxs[3][0].randomize()
-
+            
         #############
         # Sum chain #
         #############
