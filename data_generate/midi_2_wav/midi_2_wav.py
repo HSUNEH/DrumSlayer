@@ -79,32 +79,97 @@ class MIDI(Dataset):
             midi_96000[:, i::upsample_factor] = midi_1920
         return midi_96000
 
-import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument('--data_type', type=str, default='practice', help='train, val, test')
-args = parser.parse_args()
 
 def midi_2_wav(args):
+
+    data_type = args.data_type
+    if data_type == 'all':
+        midi_2_wav_all(args)
+    else:
+        midi_2_wav_one(args)
+    return None
+
+def midi_2_wav_all(args):
     from tqdm import tqdm
     import soundfile as sf
     import torch
+    all = ['train', 'valid', 'test']
+    for data_type in all:
+        
+        sample_rate = args.sample_rate
+        loop_seconds = 2
+        oneshot_dir = args.oneshot_dir
+        output_dir = args.output_dir
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        #single shot dir
+        dir_ss_kick =       oneshot_dir + f'{data_type}/kick'
+        dir_ss_snare =      oneshot_dir + f'{data_type}/snare'
+        dir_ss_hhclosed =   oneshot_dir + f'{data_type}/hhclosed'
+        # dir_ss_hhopen = './midi_2_wav/drum_data_practice/proprietary_dataset/hhopen'
 
-    sample_rate = 48000
-    loop_seconds = 2
+        #midi numpy dir
+        dir_midi_kick =     output_dir + f'drum_data_{data_type}/generated_midi_numpy/kick_midi_numpy'
+        dir_midi_snare =    output_dir + f'drum_data_{data_type}/generated_midi_numpy/snare_midi_numpy'
+        dir_midi_hhclosed = output_dir + f'drum_data_{data_type}/generated_midi_numpy/hihat_midi_numpy'
+
+        ss_kick = SingleShot(dir_ss_kick, sample_rate)
+        ss_snare = SingleShot(dir_ss_snare, sample_rate)
+        ss_hhclosed = SingleShot(dir_ss_hhclosed, sample_rate)
+        # ss_hhopen = SingleShot(dir_ss_hhopen, sample_rate)
+
+        midi_kick = MIDI(dir_midi_kick)
+        midi_snare = MIDI(dir_midi_snare)
+        midi_hhclosed = MIDI(dir_midi_hhclosed)
+
+        loop_kick = Loop(ss_kick, midi_kick, loop_seconds)
+        loop_snare = Loop(ss_snare, midi_snare, loop_seconds)
+        loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds)
+
+        # Bring the each loop separately
+        for idx in tqdm(range(len(loop_kick))): 
+            audio_loop_kick, _, _  = loop_kick[idx]
+            audio_loop_snare, _, _  = loop_snare[idx]
+            audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
+            
+            audio_loop_kick = np.transpose(audio_loop_kick)
+            audio_loop_snare = np.transpose(audio_loop_snare)
+            audio_loop_hhclosed = np.transpose(audio_loop_hhclosed)
+            
+            kick_dir = f'./generated_data/drum_data_{data_type}/generated_loops/kick/'
+            os.makedirs(kick_dir, exist_ok=True)
+            snare_dir = f'./generated_data/drum_data_{data_type}/generated_loops/snare/'
+            os.makedirs(snare_dir, exist_ok=True)
+            hhclosed_dir = f'./generated_data/drum_data_{data_type}/generated_loops/hhclosed/'
+            os.makedirs(hhclosed_dir, exist_ok=True)
+
+            sf.write( f'{kick_dir}'+f'{idx}.wav', audio_loop_kick, sample_rate)
+            sf.write( f'{snare_dir}'+f'{idx}.wav', audio_loop_snare, sample_rate)
+            sf.write( f'{hhclosed_dir}'+f'{idx}.wav', audio_loop_hhclosed, sample_rate)
+        
+    return None
+
+def midi_2_wav_one(args):
+    from tqdm import tqdm
+    import soundfile as sf
+    import torch
     data_type = args.data_type
+    sample_rate = args.sample_rate
+    loop_seconds = 2
+    oneshot_dir = args.oneshot_dir
+    output_dir = args.output_dir
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     #single shot dir
-    dir_ss_kick =       f'./midi_2_wav/one_shots/{data_type}/kick'
-    dir_ss_snare =      f'./midi_2_wav/one_shots/{data_type}/snare'
-    dir_ss_hhclosed =   f'./midi_2_wav/one_shots/{data_type}/hhclosed'
+    dir_ss_kick =       oneshot_dir + f'{data_type}/kick'
+    dir_ss_snare =      oneshot_dir + f'{data_type}/snare'
+    dir_ss_hhclosed =   oneshot_dir + f'{data_type}/hhclosed'
     # dir_ss_hhopen = './midi_2_wav/drum_data_practice/proprietary_dataset/hhopen'
 
     #midi numpy dir
-    dir_midi_kick =     f'./generated_data/drum_data_{data_type}/generated_midi_numpy/kick_midi_numpy'
-    dir_midi_snare =    f'./generated_data/drum_data_{data_type}/generated_midi_numpy/snare_midi_numpy'
-    dir_midi_hhclosed = f'./generated_data/drum_data_{data_type}/generated_midi_numpy/hihat_midi_numpy'
+    dir_midi_kick =     output_dir + f'drum_data_{data_type}/generated_midi_numpy/kick_midi_numpy'
+    dir_midi_snare =    output_dir + f'drum_data_{data_type}/generated_midi_numpy/snare_midi_numpy'
+    dir_midi_hhclosed = output_dir + f'drum_data_{data_type}/generated_midi_numpy/hhclosed_midi_numpy'
 
     ss_kick = SingleShot(dir_ss_kick, sample_rate)
     ss_snare = SingleShot(dir_ss_snare, sample_rate)
@@ -140,6 +205,7 @@ def midi_2_wav(args):
         sf.write( f'{snare_dir}'+f'{idx}.wav', audio_loop_snare, sample_rate)
         sf.write( f'{hhclosed_dir}'+f'{idx}.wav', audio_loop_hhclosed, sample_rate)
         
+    return None
 
     # # Bring the whole loop at once
     # for idx in tqdm(range(len(loop_kick))): 
@@ -151,3 +217,12 @@ def midi_2_wav(args):
     #     output_dir = f'./generated_data/drum_data_{data_type}/generated_loops/'
     #     os.makedirs(output_dir, exist_ok=True)
     #     sf.write( f'{output_dir}'+f'{idx}.wav', audio_loop_drum, sample_rate)
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_type', type=str, default='aa', help='all, train, valid, test')
+    parser.add_argument('--sample_rate', type=int, default=48000, help='sample_rate')
+    args = parser.parse_args()
+    midi_2_wav(args)
