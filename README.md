@@ -12,7 +12,7 @@ Make your dataset by yourself
 
 - get data from `scp -rP 20022 marg@147.47.120.221:/home/marg/st_drums/one_shots <one shot dir>` 
 
-2. `data_generate/data_generate.py --data_type all --oneshot_dir <one shot dir> --output_dir <dir to save>`
+2. `python data_generate/data_generate.py --data_type all --oneshot_dir <one shot dir> --output_dir <dir to save>`
 
 
 # Reference
