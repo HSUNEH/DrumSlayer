@@ -7,6 +7,7 @@ Mixture Audio -> Drum Midi & Drum Source
 requirements 
 1. `pip install -r requirements.txt`
 2. `pip install -r data_generate/DAFXChain/requirements.txt`
+3. extra install in `data_generate/DAFXChain/requirements.txt`
 
 ### Make your dataset by yourself
 
