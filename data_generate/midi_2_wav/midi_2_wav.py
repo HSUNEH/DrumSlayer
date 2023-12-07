@@ -80,7 +80,7 @@ class MIDI(Dataset):
         return midi_96000
 
 
-def midi_2_wav(args):
+def generate_midi_2_wav(args):
 
     data_type = args.data_type
     if data_type == 'all':
@@ -127,7 +127,7 @@ def midi_2_wav_all(args):
         loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds)
 
         # Bring the each loop separately
-        for idx in tqdm(range(len(loop_kick))): 
+        for idx in tqdm(range(len(loop_kick)), desc=f'midi2wav {data_type} data'): 
             audio_loop_kick, _, _  = loop_kick[idx]
             audio_loop_snare, _, _  = loop_snare[idx]
             audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
@@ -185,7 +185,7 @@ def midi_2_wav_one(args):
     loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds)
 
     # Bring the each loop separately
-    for idx in tqdm(range(len(loop_kick))): 
+    for idx in tqdm(range(len(loop_kick)), desc=f'midi2wav {data_type} data'): 
         audio_loop_kick, _, _  = loop_kick[idx]
         audio_loop_snare, _, _  = loop_snare[idx]
         audio_loop_hhclosed, _, _  = loop_hhclosed[idx]

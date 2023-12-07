@@ -24,12 +24,13 @@ def generate_midi_all(args):
     ##### parameter #####
     midi_number = args.midi_number    # midi 개수
     midi_n_list = [int(midi_number*0.9), int(midi_number*0.05), int(midi_number*0.05)]
-    bpm = 120 # Sec 단위 생성이기 때문에 0.5 beat = 2 tick = 1 sec
+    # bpm = 120 # Sec 단위 생성이기 때문에 0.5 beat = 2 tick = 1 sec
     output_dir = args.output_dir
 
-    sec_per_tick = 60 / bpm
-    tick_number = 4*args.beat         # 4tick = 1beat
-    print("Midi sec : ", sec_per_tick * tick_number )
+    # sec_per_tick = 60 / bpm # 0.5
+    loop_seconds = args.loop_seconds
+    tick_number = loop_seconds*2 # 4*args.beat   # 4tick = 1beat
+    # print("Midi sec : ", sec_per_tick * tick_number )
     sample_rate = args.sample_rate         
 
     #####################
@@ -68,7 +69,7 @@ def generate_midi_all(args):
                 midi_name = 'snare_midi'
 
 
-            for _ in tqdm(range(midi_number)):
+            for _ in tqdm(range(midi_number), desc=f'Generate {data_type} {midi_name}'):
                 # create an empty file
                 mido_obj = mid_parser.MidiFile()
                 beat_resol = mido_obj.ticks_per_beat
@@ -156,7 +157,7 @@ def generate_midi_all(args):
                 np.save(output_dir2+f'/{midi_name}_{_}', midi_numpy)    
 
 
-            print(f"generated '{midi_number}' number of '{midi_name}' succeed")
+            
     return None  
 
 def generate_midi_one(args):
@@ -167,13 +168,14 @@ def generate_midi_one(args):
     ##### parameter #####
     midi_number = args.midi_number    # midi 개수
     data_type = args.data_type   # train, val, test, all
-    bpm = 120 # Sec 단위 생성이기 때문에 0.5 beat = 2 tick = 1 sec
+    # bpm = 120 # Sec 단위 생성이기 때문에 0.5 beat = 2 tick = 1 sec
     output_dir = args.output_dir
 
-    sec_per_tick = 60 / bpm
-    tick_number = 4*args.beat         # 4tick = 1beat
-    print("Midi sec : ", sec_per_tick * tick_number )
-    sample_rate = args.sample_rate         
+    # sec_per_tick = 60 / bpm # 0.5
+    loop_seconds = args.loop_seconds
+    tick_number = loop_seconds*2 # 4*args.beat   # 4tick = 1beat
+    # print("Midi sec : ", sec_per_tick * tick_number )
+    sample_rate = args.sample_rate
 
     #####################
     # mu, sigma -> musig = True
@@ -208,7 +210,7 @@ def generate_midi_one(args):
             midi_name = 'snare_midi'
 
 
-        for _ in tqdm(range(midi_number)):
+        for _ in tqdm(range(midi_number), desc=f'Midi generate {data_type} data'):
             # create an empty file
             mido_obj = mid_parser.MidiFile()
             beat_resol = mido_obj.ticks_per_beat
@@ -296,7 +298,7 @@ def generate_midi_one(args):
             np.save(output_dir2+f'/{midi_name}_{_}', midi_numpy)    
 
 
-        print(f"generated '{midi_number}' number of '{midi_name}' succeed")
+
     return None
 
 if __name__ == "__main__":
@@ -309,6 +311,7 @@ if __name__ == "__main__":
     parser.add_argument('--data_type', type=str, default='prac', help='train, val, test')
     parser.add_argument('--midi_number', type=int, default=10, help='midi number')
     parser.add_argument('--beat', type=int, default=1, help='beat')
+    parser.add_argument('--loop_seconds', type=int, default=10, help='loop_seconds')
     parser.add_argument('--sample_rate', type=int, default=48000, help='sample_rate')
     parser.add_argument('--grid_random', type=str, default='RG', help='R for random, G for grid, RG for random in grid, GG for gaussian in grid')
     parser.add_argument('--random_type', type=str, default='random', help='random or gaussian')

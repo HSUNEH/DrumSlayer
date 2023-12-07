@@ -5,14 +5,16 @@ from audiotools import AudioSignal
 from scipy.io.wavfile import write
 import shutil
 import os
+from tqdm import tqdm
 
-def drum_fx(args):
+def generate_drum_fx(args):
     data_type = args.data_type
     if data_type == 'all':
         drum_fx_all(args)
     else:
         drum_fx_one(args)
     return None
+
 def drum_fx_all(args):
     # mono, sample rate
     for num, data_type in enumerate(['train', 'valid', 'test']):
@@ -24,7 +26,7 @@ def drum_fx_all(args):
         # define chain
         drumchains = DrumChains(mono, sample_rate)
 
-        for i in range(midi_number[num]):
+        for i in tqdm(range(midi_number[num]), desc=f'DAFX {data_type} data'):
             # prepare kick, hihat, snare loops. should be numpy array!
             kick = AudioSignal(f'./generated_data/drum_data_{data_type}/generated_loops/kick/{i}.wav').numpy().squeeze()
             snare = AudioSignal(f'./generated_data/drum_data_{data_type}/generated_loops/snare/{i}.wav').numpy().squeeze()
@@ -48,7 +50,7 @@ def drum_fx_one(args):
     # define chain
     drumchains = DrumChains(mono, sample_rate)
 
-    for i in range(args.midi_number):
+    for i in tqdm(range(args.midi_number), desc=f'DAFX {args.data_type} data'):
         # prepare kick, hihat, snare loops. should be numpy array!
         kick = AudioSignal(f'./generated_data/drum_data_{args.data_type}/generated_loops/kick/{i}.wav').numpy().squeeze()
         snare = AudioSignal(f'./generated_data/drum_data_{args.data_type}/generated_loops/snare/{i}.wav').numpy().squeeze()
