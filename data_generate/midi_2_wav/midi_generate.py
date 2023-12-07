@@ -31,7 +31,6 @@ def generate_midi_all(args):
     loop_seconds = args.loop_seconds
     tick_number = loop_seconds*2 # 4*args.beat   # 4tick = 1beat
     # print("Midi sec : ", sec_per_tick * tick_number )
-    sample_rate = args.sample_rate         
 
     #####################
     # mu, sigma -> musig = True
@@ -59,13 +58,13 @@ def generate_midi_all(args):
 
         for b in range(3):
             if b == 0:
-                note_number = 8 *args.beat        # onset 개수
+                note_number = 4 *loop_seconds        # onset 개수
                 midi_name = 'hihat_midi'          # 폴더,파일 이름
             elif b == 1:
-                note_number = 2 *args.beat
+                note_number = loop_seconds
                 midi_name = 'kick_midi'
             elif b == 2 :
-                note_number = 2 *args.beat
+                note_number = loop_seconds
                 midi_name = 'snare_midi'
 
 
@@ -175,7 +174,6 @@ def generate_midi_one(args):
     loop_seconds = args.loop_seconds
     tick_number = loop_seconds*2 # 4*args.beat   # 4tick = 1beat
     # print("Midi sec : ", sec_per_tick * tick_number )
-    sample_rate = args.sample_rate
 
     #####################
     # mu, sigma -> musig = True
@@ -200,13 +198,13 @@ def generate_midi_one(args):
 
     for b in range(3):
         if b == 0:
-            note_number = 8 *args.beat        # onset 개수
+            note_number = 4 *loop_seconds        # onset 개수
             midi_name = 'hihat_midi'          # 폴더,파일 이름
         elif b == 1:
-            note_number = 2 *args.beat
+            note_number = loop_seconds
             midi_name = 'kick_midi'
         elif b == 2 :
-            note_number = 2 *args.beat
+            note_number = loop_seconds
             midi_name = 'snare_midi'
 
 
@@ -314,7 +312,6 @@ if __name__ == "__main__":
     parser.add_argument('--loop_seconds', type=int, default=10, help='loop_seconds')
     parser.add_argument('--sample_rate', type=int, default=48000, help='sample_rate')
     parser.add_argument('--grid_random', type=str, default='RG', help='R for random, G for grid, RG for random in grid, GG for gaussian in grid')
-    parser.add_argument('--random_type', type=str, default='random', help='random or gaussian')
     parser.add_argument('--output_dir', type=str, default='./generated_data/', help='data directory')
     args = parser.parse_args()
     generate_midi(args)

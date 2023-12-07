@@ -64,20 +64,23 @@ class SingleShot(Dataset):
     
 
 class MIDI(Dataset):
-    def __init__(self, directory):
+    def __init__(self, directory, sample_rate, loop_seconds):
         self.data = [os.path.join(directory, f) for f in natsorted(os.listdir(directory)) if f.endswith('.npy')]
-
+        self.sr = sample_rate
+        self.loop_seconds = loop_seconds
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         # breakpoint()
-        midi_1920 = np.load(self.data[idx]) # (2, 1920)
-        midi_96000 = np.zeros([midi_1920.shape[0],96000])
-        upsample_factor = 96000 // 1920  # 확장 비율 계산
-        for i in range(upsample_factor):
-            midi_96000[:, i::upsample_factor] = midi_1920
-        return midi_96000
+        midi_960n = np.load(self.data[idx]) # (2, 960*loop_seconds)
+        midi_sr_n = np.zeros([midi_960n.shape[0], self.sr * self.loop_seconds]) # (2, sample_rate * loop_second)
+        
+        for i in range(midi_960n.shape[0]):
+            for j in range(midi_960n.shape[1]):
+                midi_sr_n[i, int(round(j*self.sr/960))] = midi_960n[i, j]
+        
+        return midi_sr_n
 
 
 def generate_midi_2_wav(args):
@@ -97,7 +100,7 @@ def midi_2_wav_all(args):
     for data_type in all:
         
         sample_rate = args.sample_rate
-        loop_seconds = 2
+        loop_seconds = args.loop_seconds
         oneshot_dir = args.oneshot_dir
         output_dir = args.output_dir
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -118,9 +121,9 @@ def midi_2_wav_all(args):
         ss_hhclosed = SingleShot(dir_ss_hhclosed, sample_rate)
         # ss_hhopen = SingleShot(dir_ss_hhopen, sample_rate)
 
-        midi_kick = MIDI(dir_midi_kick)
-        midi_snare = MIDI(dir_midi_snare)
-        midi_hhclosed = MIDI(dir_midi_hhclosed)
+        midi_kick = MIDI(dir_midi_kick, sample_rate, loop_seconds)
+        midi_snare = MIDI(dir_midi_snare,sample_rate, loop_seconds)
+        midi_hhclosed = MIDI(dir_midi_hhclosed,sample_rate, loop_seconds) 
 
         loop_kick = Loop(ss_kick, midi_kick, loop_seconds)
         loop_snare = Loop(ss_snare, midi_snare, loop_seconds)
@@ -155,7 +158,7 @@ def midi_2_wav_one(args):
     import torch
     data_type = args.data_type
     sample_rate = args.sample_rate
-    loop_seconds = 2
+    loop_seconds = args.loop_seconds
     oneshot_dir = args.oneshot_dir
     output_dir = args.output_dir
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -176,9 +179,9 @@ def midi_2_wav_one(args):
     ss_hhclosed = SingleShot(dir_ss_hhclosed, sample_rate)
     # ss_hhopen = SingleShot(dir_ss_hhopen, sample_rate)
 
-    midi_kick = MIDI(dir_midi_kick)
-    midi_snare = MIDI(dir_midi_snare)
-    midi_hhclosed = MIDI(dir_midi_hhclosed)
+    midi_kick = MIDI(dir_midi_kick, sample_rate, loop_seconds)
+    midi_snare = MIDI(dir_midi_snare,sample_rate, loop_seconds)
+    midi_hhclosed = MIDI(dir_midi_hhclosed,sample_rate, loop_seconds) 
 
     loop_kick = Loop(ss_kick, midi_kick, loop_seconds)
     loop_snare = Loop(ss_snare, midi_snare, loop_seconds)
