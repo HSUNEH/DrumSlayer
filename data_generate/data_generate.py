@@ -2,8 +2,7 @@ import midi_2_wav
 import argparse
 import DAFXChain.drum_fx
 
-if __name__ == '__main__':
-    
+if __name__ == '__main__':    
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_type', type=str, default='all', help='all, train, valid, test')
     parser.add_argument('--other_sounds', type=bool, default=False, help='other sounds')

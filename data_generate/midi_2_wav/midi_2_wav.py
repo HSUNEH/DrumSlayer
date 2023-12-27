@@ -4,15 +4,18 @@ import numpy as np
 from torch.utils.data import Dataset
 from natsort import natsorted
 from scipy import signal
+import torch
 
 # TODO : 앞 sample 자르고 들어가기 
 class Loop(Dataset):
-    def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, reference_pitch=48): #60
+    def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, output_dir, data_type, inst, reference_pitch=48): #60
         self.ssdataset = single_shot_dataset
         self.mididataset = midi_dataset
         self.loop_length = loop_seconds * self.ssdataset.sample_rate
         self.reference_pitch = reference_pitch
-    
+        self.output_dir = output_dir
+        self.data_type = data_type
+        self.inst = inst
     def __len__(self):
         return len(self.mididataset)
 
@@ -22,7 +25,16 @@ class Loop(Dataset):
         midiindex = index
 
         # Get singleshot & velocity & pitch
-        ss = self.ssdataset[ssindex]
+        ss, ss_name = self.ssdataset[ssindex]
+        ss_name = os.path.basename(ss_name)
+        # TODO : singleshot 저장
+        ss_file = self.output_dir + f'drum_data_{self.data_type}/{self.inst}ShotList.txt'
+        if midiindex == 0:
+            np.savetxt(ss_file, np.reshape(ss_name, (1,)), fmt='%s')
+        else:
+            with open(ss_file, 'a') as f:
+                np.savetxt(f, np.reshape(ss_name, (1,)), fmt='%s')
+
         velocity, pitch = self.mididataset[midiindex]
         onset = (velocity != 0).astype(int)
         pitch_shifted = (pitch - self.reference_pitch)*onset
@@ -51,17 +63,17 @@ class SingleShot(Dataset):
     def __init__(self, directory, sample_rate):
         self.sample_rate = sample_rate
         self.data = [os.path.join(directory, f) for f in natsorted(os.listdir(directory)) if f.endswith('.wav')]
-        # data = directory내 wav파일 list
-        
+        # self.data = directory내 wav파일 list
+
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         audio, _ = librosa.load(self.data[idx], sr=self.sample_rate, mono=False)
         if audio.ndim == 1:
-            audio = np.stack((audio, audio))
-        return audio
-    
+            audio = np.stack((audio, audio)) # make mono to stereo
+        return audio, self.data[idx]
+
 
 class MIDI(Dataset):
     def __init__(self, directory, sample_rate, loop_seconds):
@@ -84,13 +96,13 @@ class MIDI(Dataset):
 
 
 def generate_midi_2_wav(args):
-
     data_type = args.data_type
     if data_type == 'all':
         midi_2_wav_all(args)
     else:
         midi_2_wav_one(args)
     return None
+
 
 def midi_2_wav_all(args):
     from tqdm import tqdm
@@ -103,7 +115,6 @@ def midi_2_wav_all(args):
         loop_seconds = args.loop_seconds
         oneshot_dir = args.oneshot_dir
         output_dir = args.output_dir
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         #single shot dir
         dir_ss_kick =       oneshot_dir + f'{data_type}/kick'
@@ -125,9 +136,9 @@ def midi_2_wav_all(args):
         midi_snare = MIDI(dir_midi_snare,sample_rate, loop_seconds)
         midi_hhclosed = MIDI(dir_midi_hhclosed,sample_rate, loop_seconds) 
 
-        loop_kick = Loop(ss_kick, midi_kick, loop_seconds)
-        loop_snare = Loop(ss_snare, midi_snare, loop_seconds)
-        loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds)
+        loop_kick = Loop(ss_kick, midi_kick, loop_seconds, output_dir, data_type, 'kick')
+        loop_snare = Loop(ss_snare, midi_snare, loop_seconds, output_dir, data_type, 'snare')
+        loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds, output_dir, data_type, 'hihat')
 
         # Bring the each loop separately
         for idx in tqdm(range(len(loop_kick)), desc=f'midi2wav {data_type} data'): 
@@ -139,17 +150,17 @@ def midi_2_wav_all(args):
             audio_loop_snare = np.transpose(audio_loop_snare)
             audio_loop_hhclosed = np.transpose(audio_loop_hhclosed)
             
-            kick_dir = f'./generated_data/drum_data_{data_type}/generated_loops/kick/'
+            kick_dir = output_dir + f'drum_data_{data_type}/generated_loops/kick/'
             os.makedirs(kick_dir, exist_ok=True)
-            snare_dir = f'./generated_data/drum_data_{data_type}/generated_loops/snare/'
+            snare_dir = output_dir + f'drum_data_{data_type}/generated_loops/snare/'
             os.makedirs(snare_dir, exist_ok=True)
-            hhclosed_dir = f'./generated_data/drum_data_{data_type}/generated_loops/hhclosed/'
+            hhclosed_dir = output_dir + f'drum_data_{data_type}/generated_loops/hhclosed/'
             os.makedirs(hhclosed_dir, exist_ok=True)
 
             sf.write( f'{kick_dir}'+f'{idx}.wav', audio_loop_kick, sample_rate)
             sf.write( f'{snare_dir}'+f'{idx}.wav', audio_loop_snare, sample_rate)
             sf.write( f'{hhclosed_dir}'+f'{idx}.wav', audio_loop_hhclosed, sample_rate)
-        
+
     return None
 
 def midi_2_wav_one(args):
@@ -225,7 +236,11 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_type', type=str, default='aa', help='all, train, valid, test')
+    parser.add_argument('--data_type', type=str, default='all', help='all, train, valid, test')
+    parser.add_argument('--other_sounds', type=bool, default=False, help='other sounds')
     parser.add_argument('--sample_rate', type=int, default=48000, help='sample_rate')
+    parser.add_argument('--loop_seconds', type=int, default=5, help='loop_seconds')
+    parser.add_argument('--oneshot_dir', type=str, default='./midi_2_wav/one_shots/', help='input data directory')
+    parser.add_argument('--output_dir', type=str, default='./generated_data/', help='output data directory')
     args = parser.parse_args()
-    midi_2_wav(args)
+    generate_midi_2_wav(args)

@@ -6,6 +6,179 @@ from mixing_manipulator.audio_effects_chain import create_effects_augmentation_c
 from mixing_manipulator.common_audioeffects import *
 from utils import RMS_parallel
 
+class MasteringChains():
+    def __init__(self, mono:bool, sample_rate):
+        if mono:
+            n_channels = 1
+        else:
+            n_channels = 2
+        self.mono = mono
+        self.sample_rate = sample_rate
+
+        #############
+        # Sum chain #
+        #############
+            # HPF
+        self.HPF = Pedalboard([
+            HighpassFilter(
+                cutoff_frequency_hz=2000.0
+            )
+        ])
+
+            # LPF
+        self.LPF = Pedalboard([
+            LowpassFilter(
+                cutoff_frequency_hz=200.0
+            )
+        ])
+
+            # REVERB
+        self.snare_reverb = Pedalboard([
+            Reverb(
+                room_size = 0.5, # 0 ~ 1
+                damping = 0.5, # 0 ~ 1
+                wet_level = 1.0, # 0 ~ 1
+                dry_level = 0.0, # 0 ~ 1
+                width = 1.0, # 0 ~ 1
+                freeze_mode = 0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+        self.hihat_reverb = Pedalboard([
+            Reverb(
+                room_size = 0.5, # 0 ~ 1
+                damping = 0.5, # 0 ~ 1
+                wet_level = 1.0, # 0 ~ 1
+                dry_level = 0.0, # 0 ~ 1
+                width = 1.0, # 0 ~ 1
+                freeze_mode = 0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+            # DELAY
+        self.snare_delay = Pedalboard([
+            Delay(
+                delay_seconds = 0.5, # 0 ~
+                feedback = 0.0, # 0 ~ 1
+                mix = 1.0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+        self.hihat_delay = Pedalboard([
+            Delay(
+                delay_seconds = 0.5, # 0 ~
+                feedback = 0.0, # 0 ~ 1
+                mix = 1.0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+            # EQ
+        mix_eq_params = ParameterList()
+        mix_eq_params.add(Parameter('first_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
+        mix_eq_params.add(Parameter('first_band_freq', 80.0, 'float', minimum=20.0, maximum=200.0))
+        mix_eq_params.add(Parameter('first_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
+        mix_eq_params.add(Parameter('second_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
+        mix_eq_params.add(Parameter('second_band_freq', 800.0, 'float', minimum=200.0, maximum=3000.0))
+        mix_eq_params.add(Parameter('second_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
+        mix_eq_params.add(Parameter('third_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
+        mix_eq_params.add(Parameter('third_band_freq', 6000.0, 'float', minimum=3000.0, maximum=20000.0))
+        mix_eq_params.add(Parameter('third_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
+        mix_eq = Equaliser(n_channels=n_channels, sample_rate=sample_rate, bands=['first_band', 'second_band', 'third_band'], parameters=mix_eq_params)
+        self.mix_eq = create_effects_augmentation_chain([mix_eq], ir_dir_path=None, sample_rate=sample_rate)
+
+            # LIMITER
+        self.limiter = Pedalboard([
+            pedalboard_gain(
+                gain_db = 1.0
+            ),
+            Limiter(
+                threshold_db=0.0, # MUSDB 랑 합쳐서 들어보고 판단.
+                release_ms = 100 # 2.0 ~ 1000.0
+            )
+        ])
+
+        self.HPF[0].cutoff_frequency_hz = 2000 + (random.random()*2-1)*500
+        self.LPF[0].cutoff_frequency_hz = 200 + (random.random()*2-1)*100
+
+        self.snare_reverb[0].room_size = random.random()
+        self.snare_reverb[0].damping = random.random()
+        self.snare_reverb[0].width = random.random()
+        self.snare_reverb[0].freeze_mode = random.random()
+        self.snare_reverb[1].gain_db = random.random()*(-3) - 3
+
+        self.hihat_reverb[0].room_size = random.random()
+        self.hihat_reverb[0].damping = random.random()
+        self.hihat_reverb[0].width = random.random()
+        self.hihat_reverb[0].freeze_mode = random.random()
+        self.hihat_reverb[1].gain_db = random.random()*(-3) - 3
+
+        self.snare_delay[0].delay_seconds = random.random()
+        self.snare_delay[0].feedback = random.random()*0.005
+        self.snare_delay[1].gain_db = random.random()*(-3) - 7
+
+        self.hihat_delay[0].delay_seconds = random.random()
+        self.hihat_delay[0].feedback = random.random()*0.005
+        self.hihat_delay[1].gain_db = random.random()*(-3) - 7
+
+        self.mix_eq.fxs[0][0].randomize()
+
+        self.limiter[0].gain_db = random.random()*20 + 5
+        self.limiter[1].threshold_db = -random.random()
+        self.limiter[1].release_ms = float(random.randrange(2, 1001))
+
+
+    def apply(self,kick_modified, snare_modified, hihat_modified, *insts):
+        #############
+        # Sum chain # (mastering)
+        #############
+        snare_reverbed = [[0, 0]]
+        hihat_reverbed = [[0, 0]]
+        snare_delayed = [[0, 0]]
+        hihat_delayed = [[0, 0]]
+
+        if random.random() <= 0.5:
+            snare_reverbed += self.HPF(self.snare_reverb(snare_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            snare_reverbed +=  self.LPF(self.snare_reverb(snare_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            hihat_reverbed += self.HPF(self.hihat_reverb(hihat_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            hihat_reverbed += self.LPF(self.hihat_reverb(hihat_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            snare_delayed += self.HPF(self.snare_delay(snare_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            snare_delayed +=  self.LPF(self.snare_delay(snare_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            hihat_delayed += self.HPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            hihat_delayed += self.LPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
+        
+        inst_reverbed = [[0, 0]]*len(insts)
+        inst_delayed = [[0, 0]]*len(insts)
+        for n,inst in enumerate(insts):
+            if random.random() <= 0.5:
+                inst_reverbed[n] += self.HPF(self.inst_reverb(inst[0], self.sample_rate), self.sample_rate)
+            if random.random() <= 0.01:
+                inst_reverbed +=  self.LPF(self.inst_reverb(inst[0], self.sample_rate), self.sample_rate)
+            if random.random() <= 0.5:
+                inst_delayed += self.HPF(self.inst_delay(inst_modified[0], self.sample_rate), self.sample_rate)
+            if random.random() <= 0.01:
+                inst_delayed += self.LPF(self.inst_delay(inst_modified[0], self.sample_rate), self.sample_rate)
+        
+        drum_mix = self.limiter(self.mix_eq.__call__([kick_modified[0] + snare_modified[0] + hihat_modified[0]])[0], self.sample_rate)
+        output = drum_mix + snare_reverbed + hihat_reverbed + snare_delayed + hihat_delayed
+
+        return output.T
 
 class DrumChains():
     def __init__(self, mono:bool, sample_rate):
@@ -104,87 +277,6 @@ class DrumChains():
         self.snare_chain = create_effects_augmentation_chain([snare_gain, snare_eq, snare_comp, snare_pan], ir_dir_path=None, sample_rate=sample_rate)
         self.hihat_chain = create_effects_augmentation_chain([hihat_gain, hihat_eq, hihat_comp, hihat_pan], ir_dir_path=None, sample_rate=sample_rate)
 
-        #############
-        # Sum chain #
-        #############
-            # HPF
-        self.HPF = Pedalboard([
-            HighpassFilter(
-                cutoff_frequency_hz=2000.0
-            )
-        ])
-         
-            # LPF
-        self.LPF = Pedalboard([
-            LowpassFilter(
-                cutoff_frequency_hz=200.0
-            )
-        ])
-
-            # REVERB
-        self.snare_reverb = Pedalboard([
-            Reverb(
-                room_size = 0.5, # 0 ~ 1
-                damping = 0.5, # 0 ~ 1
-                wet_level = 1.0, # 0 ~ 1
-                dry_level = 0.0, # 0 ~ 1
-                width = 1.0, # 0 ~ 1
-                freeze_mode = 0 # 0 ~ 1
-            ),
-            pedalboard_gain(
-                gain_db = 1.0
-            )
-        ])
-
-        self.hihat_reverb = Pedalboard([
-            Reverb(
-                room_size = 0.5, # 0 ~ 1
-                damping = 0.5, # 0 ~ 1
-                wet_level = 1.0, # 0 ~ 1
-                dry_level = 0.0, # 0 ~ 1
-                width = 1.0, # 0 ~ 1
-                freeze_mode = 0 # 0 ~ 1
-            ),
-            pedalboard_gain(
-                gain_db = 1.0
-            )
-        ])
-            # DELAY
-        self.snare_delay = Pedalboard([
-            Delay(
-                delay_seconds = 0.5, # 0 ~
-                feedback = 0.0, # 0 ~ 1
-                mix = 1.0 # 0 ~ 1
-            ),
-            pedalboard_gain(
-                gain_db = 1.0
-            )
-        ])
-
-        self.hihat_delay = Pedalboard([
-            Delay(
-                delay_seconds = 0.5, # 0 ~
-                feedback = 0.0, # 0 ~ 1
-                mix = 1.0 # 0 ~ 1
-            ),
-            pedalboard_gain(
-                gain_db = 1.0
-            )
-        ])
-            # EQ
-        mix_eq_params = ParameterList()
-        mix_eq_params.add(Parameter('first_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
-        mix_eq_params.add(Parameter('first_band_freq', 80.0, 'float', minimum=20.0, maximum=200.0))
-        mix_eq_params.add(Parameter('first_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
-        mix_eq_params.add(Parameter('second_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
-        mix_eq_params.add(Parameter('second_band_freq', 800.0, 'float', minimum=200.0, maximum=3000.0))
-        mix_eq_params.add(Parameter('second_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
-        mix_eq_params.add(Parameter('third_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
-        mix_eq_params.add(Parameter('third_band_freq', 6000.0, 'float', minimum=3000.0, maximum=20000.0))
-        mix_eq_params.add(Parameter('third_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
-        mix_eq = Equaliser(n_channels=n_channels, sample_rate=sample_rate, bands=['first_band', 'second_band', 'third_band'], parameters=mix_eq_params)
-        self.mix_eq = create_effects_augmentation_chain([mix_eq], ir_dir_path=None, sample_rate=sample_rate)
-
             # LIMITER
         self.limiter = Pedalboard([
             pedalboard_gain(
@@ -215,77 +307,150 @@ class DrumChains():
             individual_chains[i].fxs[1][0].randomize()
             individual_chains[i].fxs[2][0].randomize()
             individual_chains[i].fxs[3][0].randomize()
-            
-        #############
-        # Sum chain #
-        #############
-        self.HPF[0].cutoff_frequency_hz = 2000 + (random.random()*2-1)*500
-        self.LPF[0].cutoff_frequency_hz = 200 + (random.random()*2-1)*100
 
-        self.snare_reverb[0].room_size = random.random()
-        self.snare_reverb[0].damping = random.random()
-        self.snare_reverb[0].width = random.random()
-        self.snare_reverb[0].freeze_mode = random.random()
-        self.snare_reverb[1].gain_db = random.random()*(-3) - 3
 
-        self.hihat_reverb[0].room_size = random.random()
-        self.hihat_reverb[0].damping = random.random()
-        self.hihat_reverb[0].width = random.random()
-        self.hihat_reverb[0].freeze_mode = random.random()
-        self.hihat_reverb[1].gain_db = random.random()*(-3) - 3
 
-        self.snare_delay[0].delay_seconds = random.random()
-        self.snare_delay[0].feedback = random.random()*0.005
-        self.snare_delay[1].gain_db = random.random()*(-3) - 7
-
-        self.hihat_delay[0].delay_seconds = random.random()
-        self.hihat_delay[0].feedback = random.random()*0.005
-        self.hihat_delay[1].gain_db = random.random()*(-3) - 7
-
-        self.mix_eq.fxs[0][0].randomize()
-
-        self.limiter[0].gain_db = random.random()*20 + 5
-        self.limiter[1].threshold_db = -random.random()
-        self.limiter[1].release_ms = float(random.randrange(2, 1001))
-    
     def apply(self, kick, snare, hihat):
         self.update_chains([kick, snare, hihat])
 
         #####################
-        # Individual chains #
+        # Individual chains # (mixing)
         #####################
         kick_modified = self.kick_chain.__call__([kick.T])
         snare_modified = self.snare_chain.__call__([snare.T])
         hihat_modified = self.hihat_chain.__call__([hihat.T])
-        #############
-        # Sum chain #
-        #############
-        snare_reverbed = [[0, 0]]
-        hihat_reverbed = [[0, 0]]
-        snare_delayed = [[0, 0]]
-        hihat_delayed = [[0, 0]]
 
-        if random.random() <= 0.5:
-            snare_reverbed += self.HPF(self.snare_reverb(snare_modified[0], self.sample_rate), self.sample_rate)
-        if random.random() <= 0.01:
-            snare_reverbed +=  self.LPF(self.snare_reverb(snare_modified[0], self.sample_rate), self.sample_rate)
-        if random.random() <= 0.5:
-            hihat_reverbed += self.HPF(self.hihat_reverb(hihat_modified[0], self.sample_rate), self.sample_rate)
-        if random.random() <= 0.01:
-            hihat_reverbed += self.LPF(self.hihat_reverb(hihat_modified[0], self.sample_rate), self.sample_rate)
-        if random.random() <= 0.5:
-            snare_delayed += self.HPF(self.snare_delay(snare_modified[0], self.sample_rate), self.sample_rate)
-        if random.random() <= 0.01:
-            snare_delayed +=  self.LPF(self.snare_delay(snare_modified[0], self.sample_rate), self.sample_rate)
-        if random.random() <= 0.5:
-            hihat_delayed += self.HPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
-        if random.random() <= 0.01:
-            hihat_delayed += self.LPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
-        
-        drum_mix = self.limiter(self.mix_eq.__call__([kick_modified[0] + snare_modified[0] + hihat_modified[0]])[0], self.sample_rate)
-        output = drum_mix + snare_reverbed + hihat_reverbed + snare_delayed + hihat_delayed
 
-        return output.T
+        return kick_modified, snare_modified, hihat_modified
+
+
+class InstChains():
+    def __init__(self, mono:bool, sample_rate):
+        if mono:
+            n_channels = 1
+        else:
+            n_channels = 2
+        self.mono = mono
+        self.sample_rate = sample_rate
+
+        #####################
+        # Individual chains #
+        #####################
+        # GAIN
+        # RMS 분포 -> gain
+        piano_gain_params = ParameterList()
+        piano_gain_params.add(Parameter('gain', -15.0, 'float', units='dB', minimum=-21.0, maximum=-14.0))
+        piano_gain_params.add(Parameter('invert', False, 'bool'))
+        piano_gain = Gain(parameters=piano_gain_params)
+
+        bass_gain_params = ParameterList()
+        bass_gain_params.add(Parameter('gain', -15.0, 'float', units='dB', minimum=-21.0, maximum=-14.0))
+        bass_gain_params.add(Parameter('invert', False, 'bool'))
+        bass_gain = Gain(parameters=bass_gain_params)
+
+            # EQ
+        piano_eq_params = ParameterList()
+        piano_eq_params.add(Parameter('low_shelf_gain', -2, 'float', minimum=-3, maximum=0))
+        piano_eq_params.add(Parameter('low_shelf_freq', 50.0, 'float', minimum=50.0, maximum=100.0))
+        piano_eq_params.add(Parameter('first_band_gain', 0.0, 'float', minimum=-2.0, maximum=2.0))
+        piano_eq_params.add(Parameter('first_band_freq', 75.0, 'float', minimum=50.0, maximum=100.0))
+        piano_eq_params.add(Parameter('first_band_q', 5.0, 'float', minimum=1.5, maximum=10.0))
+        piano_eq_params.add(Parameter('second_band_gain', 1.0, 'float', minimum=-1.0, maximum=2.0))
+        piano_eq_params.add(Parameter('second_band_freq', 150.0, 'float', minimum=100.0, maximum=200.0))
+        piano_eq_params.add(Parameter('second_band_q', 1.5, 'float', minimum=1.5, maximum=10.0))
+        piano_eq_params.add(Parameter('third_band_gain', 1.0, 'float', minimum=0.0, maximum=2.0))
+        piano_eq_params.add(Parameter('third_band_freq', 400.0, 'float', minimum=300.0, maximum=500.0))
+        piano_eq_params.add(Parameter('third_band_q', 2.0, 'float', minimum=1.5, maximum=10.0))
+        piano_eq = Equaliser(n_channels=n_channels, sample_rate=sample_rate, bands=['low_shelf', 'first_band', 'second_band', 'third_band'], parameters=piano_eq_params)
+
+        bass_eq_params = ParameterList()
+        bass_eq_params.add(Parameter('low_shelf_gain', -0.2, 'float', minimum=-0.5, maximum=0.5))
+        bass_eq_params.add(Parameter('low_shelf_freq', 30.0, 'float', minimum=20.0, maximum=30.0))
+        bass_eq_params.add(Parameter('first_band_gain', 0.0, 'float', minimum=-2.0, maximum=2.0))
+        bass_eq_params.add(Parameter('first_band_freq', 75.0, 'float', minimum=50.0, maximum=100.0))
+        bass_eq_params.add(Parameter('first_band_q', 5.0, 'float', minimum=1.5, maximum=10.0))
+        bass_eq_params.add(Parameter('second_band_gain', 0.0, 'float', minimum=-2.0, maximum=2.0))
+        bass_eq_params.add(Parameter('second_band_freq', 150.0, 'float', minimum=100.0, maximum=200.0))
+        bass_eq_params.add(Parameter('second_band_q', 1.5, 'float', minimum=1.5, maximum=10.0))
+        bass_eq_params.add(Parameter('third_band_gain', 0.0, 'float', minimum=-2.0, maximum=2.0))
+        bass_eq_params.add(Parameter('third_band_freq', 400.0, 'float', minimum=300.0, maximum=500.0))
+        bass_eq_params.add(Parameter('third_band_q', 2.0, 'float', minimum=1.5, maximum=10.0))
+        bass_eq = Equaliser(n_channels=n_channels, sample_rate=sample_rate, bands=['low_shelf', 'first_band', 'second_band', 'third_band'], parameters=bass_eq_params)
+
+            # COMP
+        piano_comp_params = ParameterList()
+        piano_comp_params.add(Parameter('threshold', -20.0, 'float', units='dB', minimum=-40.0, maximum=0.0))
+        piano_comp_params.add(Parameter('attack_time', 10.0, 'float', units='ms', minimum=1.0, maximum=100.0))
+        piano_comp_params.add(Parameter('release_time', 100.0, 'float', units='ms', minimum=10.0, maximum=500.0))
+        piano_comp_params.add(Parameter('ratio', 4.0, 'float', minimum=2.0, maximum=10.0))
+        piano_comp = Compressor(sample_rate = sample_rate, parameters=piano_comp_params)
+
+        bass_comp_params = ParameterList()
+        bass_comp_params.add(Parameter('threshold', -20.0, 'float', units='dB', minimum=-40.0, maximum=0.0))
+        bass_comp_params.add(Parameter('attack_time', 10.0, 'float', units='ms', minimum=1.0, maximum=100.0))
+        bass_comp_params.add(Parameter('release_time', 100.0, 'float', units='ms', minimum=10.0, maximum=500.0))
+        bass_comp_params.add(Parameter('ratio', 4.0, 'float', minimum=2.0, maximum=10.0))
+        bass_comp = Compressor(sample_rate = sample_rate, parameters=bass_comp_params)
+
+            # PAN    
+        piano_pan_params = ParameterList()
+        piano_pan_params.add(Parameter('pan', 0.5, 'float', minimum=0.46, maximum=0.56))
+        piano_pan_params.add(Parameter('pan_law', '-4.5dB', 'string', options=['-4.5dB', 'linear', 'constant_power']))
+        piano_pan = Panner(parameters=piano_pan_params)
+
+        bass_pan_params = ParameterList()
+        bass_pan_params.add(Parameter('pan', 0.5, 'float', minimum=0.46, maximum=0.56))
+        bass_pan_params.add(Parameter('pan_law', '-4.5dB', 'string', options=['-4.5dB', 'linear', 'constant_power']))
+        bass_pan = Panner(parameters=bass_pan_params)
+
+            # CHAIN
+        self.piano_chain = create_effects_augmentation_chain([piano_gain, piano_eq, piano_comp, piano_pan], ir_dir_path=None, sample_rate=sample_rate)
+        self.guitar_chain = create_effects_augmentation_chain([piano_gain, piano_eq, piano_comp, piano_pan], ir_dir_path=None, sample_rate=sample_rate)
+        self.bass_chain = create_effects_augmentation_chain([bass_gain, bass_eq, bass_comp, bass_pan], ir_dir_path=None, sample_rate=sample_rate)
+
+            # LIMITER
+        self.limiter = Pedalboard([
+            pedalboard_gain(
+                gain_db = 1.0
+            ),
+            Limiter(
+                threshold_db=0.0, 
+                release_ms = 100 
+            )
+        ])
+
+    def update_chains(self, samples):
+        #####################
+        # Individual chains #
+        #####################
+        individual_chains = [self.piano_chain, self.guitar_chain, self.bass_chain]
+        RMS_range = 0.7
+        RMS_values = RMS_parallel(samples, self.mono)
+        for i in range(len(individual_chains)):
+            individual_chains[i].fxs[0][0].parameters.gain.value =  max(
+                individual_chains[i].fxs[0][0].parameters.gain.min,
+                min(
+                    individual_chains[i].fxs[0][0].parameters.gain.max,
+                    individual_chains[i].fxs[0][0].parameters.gain.max - (RMS_values[i]/RMS_range) * individual_chains[i].fxs[0][0].parameters.gain.range + random.random()*2 - 1
+                    )
+                )
+            individual_chains[i].fxs[1][0].randomize()  # EQ Randomize
+            individual_chains[i].fxs[2][0].randomize()  # COMP  Randomize
+            individual_chains[i].fxs[3][0].randomize()  # PAN  Randomize
+
+
+
+    def apply(self, piano, snare, hihat):
+        self.update_chains([piano, snare, hihat])
+
+        #####################
+        # Individual chains # (mixing)
+        #####################
+        piano_modified = self.piano_chain.__call__([piano.T])
+        # numpy to wav write
+        piano_dir = ''
+        write(piano_dir + f'.wav', 48000, piano_modified.T)
+        return piano_modified
 
 
 class SSChains():
@@ -402,8 +567,8 @@ class SSChains():
                 gain_db = 1.0
             ),
             Limiter(
-                threshold_db=0.0, # MUSDB 랑 합쳐서 들어보고 판단.
-                release_ms = 100 # 2.0 ~ 1000.0
+                threshold_db=0.0, 
+                release_ms = 100    # 2.0 ~ 1000.0
             )
         ])
 
@@ -492,46 +657,20 @@ class SSChains():
 
 
 if __name__ == '__main__':
+    from audiotools import AudioSignal  
+    from scipy.io.wavfile import write
+    import os
     sschains = SSChains(False, 48000)
-    x = np.random.rand(2, 2**17)
+    piano_dir = "70s Rock Piano 01.wav"
+    x = AudioSignal(piano_dir).numpy().squeeze()
     a, b = sschains.apply(x, 0.0)
 
+    # numpy to wav write
+
+    write(piano_dir + f'mixed1_.wav', 48000, a.T)
+    write(piano_dir + f'mixed2_.wav', 48000, b.T)
+
     print(a.shape, b.shape)
-
-# sample_rate = 44100
-# mono = False
-# dict = {'eq':1, 'comp':1, 'pan':1, 'imager':1, 'reverb':1, 'gain':1}
-# kick = librosa.load('./samples/kick_loop_0.wav', sr = sample_rate, mono=False)[0]
-# snare = librosa.load('./samples/snare_loop_0.wav', sr = sample_rate, mono=False)[0]
-# hihat = librosa.load('./samples/hihat_loop_0.wav', sr = sample_rate, mono=False)[0]
-
-# drum_chains = DrumChains(mono = mono, sample_rate = sample_rate)
-# output = drum_chains.apply(kick, snare, hihat)
-# sf.write('./samples/drum_before_DAFXed.wav', np.transpose(kick[0] + snare[0] + hihat[0]), sample_rate, format = 'WAV', subtype = 'PCM_24')
-# sf.write('./samples/drum_DAFXed.wav', output, sample_rate, format = 'WAV', subtype = 'PCM_24')
-
-# kick_chain, snare_chain, hihat_chain = drum_chains(mono=False, sample_rate=sample_rate)
-
-# sum_chain = 0
-
-# update_chains([kick_chain, snare_chain, hihat_chain], sum_chain, [kick, snare, hihat], mono=False)
-
-# kick_modified = kick_chain.__call__([kick.T])
-# snare_modified = snare_chain.__call__([snare.T])
-# hihat_modified = hihat_chain.__call__([hihat.T])
-# drum = [kick_modified[0] + snare_modified[0] + hihat_modified[0]]
-# drum_modified = sum_chain.__call__(drum)
-
-# sf.write('./samples/drum_loop.wav', drum[0], 44100, format = 'WAV', subtype = 'PCM_24')
-# sf.write('./samples/drum_loop_modified.wav', drum_modified[0], 44100, format = 'WAV', subtype = 'PCM_24')
-
-# sf.write('./samples/kick_loop_modified.wav', kick_modified[0], 44100, format = 'WAV', subtype = 'PCM_24')
-# sf.write('./samples/snare_loop_modified.wav', snare_modified[0], 44100, format = 'WAV', subtype = 'PCM_24')
-# sf.write('./samples/hihat_loop_modified.wav', hihat_modified[0], 44100, format = 'WAV', subtype = 'PCM_24')
-
-# 0.25
-# 0.04
-# 0.02
 
 # # 이해한 점
 
@@ -548,43 +687,3 @@ if __name__ == '__main__':
 # # -> 따라서 드는 합리적 생각은, params 를 설정할 때 random 성을 얼마나 가할지를 min & max 로 조절한다는 것이다. 이걸 한번 실험해보자.
 # # -> randomize 라는 자체 내장 함수가 있어서, 모든 value 들을 바꿔준다.
 # # -> randomize 를 쓰면 굳이 update() 함수를 쓰지 않아도 된다. 하지만 'low_pass_eq.high_shelf_freq.value = 10000.0' 식으로 하나하나 randomize 해주면, 그 후에는 low_pass_eq.update() 를 해줘야 한다.
-
-
-# low_pass_eq_params = ParameterList() # pymixconsole library 에서 온 애
-# low_pass_eq_params.add(Parameter('high_shelf_gain', -50.0, 'float', minimum=-100.0, maximum=0.0))
-# low_pass_eq_params.add(Parameter('high_shelf_freq', 8000.0, 'float', minimum=5000.0, maximum=10000.0))
-# low_pass_eq = Equaliser(n_channels=2, \
-#                             sample_rate=44100, \
-#                             bands=['high_shelf'], \
-#                             parameters=low_pass_eq_params)
-
-# y, sr = sf.read('./samples/output.wav', sr = 44100, mono=False)
-# output = low_pass_eq.process(sf.read('./samples/output.wav', sr = 44100, mono=False)[0])
-# # print(output)
-# sf.write('./samples/output_eq.wav', output, 44100, format = 'WAV', subtype = 'PCM_24')
-
-# # # print(low_pass_eq.parameters)
-
-# low_pass_eq.parameters.high_shelf_freq.value = 10000.0
-# low_pass_eq.update()
-# low_pass_eq.randomize()
-
-# # print(low_pass_eq.parameters)
-# output = low_pass_eq.process(librosa.load('./samples/output.wav', sr = 44100, mono=False)[0].T)
-# sf.write('./samples/output_eq_changed.wav', output, 44100, format = 'WAV', subtype = 'PCM_24')
-# # print(output)
-
-# dict = {'eq':1, 'comp':1, 'pan':1, 'imager':1, 'reverb':1, 'gain':1}
-
-# drum_chain = create_inst_effects_augmentation_chain('drums', dict, algorithmic=True)
-# # print('EQ: ', drum_chain.fxs[0][0].fxs[0][0].parameters)
-# # drum_chain.fxs[0][0].fxs[0][0].randomize()
-# # print('EQ:', drum_chain.fxs[0][0].fxs[0][0].parameters)
-# # print(low_pass_eq)
-# # print('Comp:', drum_chain.fxs[0][0].fxs[1][0])
-# # drum_chain.fxs[0][0].fxs[1][0].randomize()
-# # print('Comp:', drum_chain.fxs[0][0].fxs[1][0])
-# audio = librosa.load('./samples/output.wav', sr = 44100, mono=False)[0]
-# print(audio.shape)
-# output = drum_chain.__call__([audio.T])
-# # sf.write('./samples/output_drummix.wav', output[0], 44100, format = 'WAV', subtype = 'PCM_24')
