@@ -5,7 +5,7 @@ import DAFXChain.drum_fx
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_type', type=str, default='all', help='all, train, valid, test')
-    parser.add_argument('--other_sounds', type=bool, default=False, help='other sounds')
+    parser.add_argument('--other_sounds', type=bool, default=True, help='other sounds')
     parser.add_argument('--midi_number', type=int, default=10, help='midi number')
     # parser.add_argument('--beat', type=int, default=1, help='beat')
     parser.add_argument('--loop_seconds', type=int, default=5, help='loop_seconds')

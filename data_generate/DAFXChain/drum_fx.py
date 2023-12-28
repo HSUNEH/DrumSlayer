@@ -1,5 +1,5 @@
 import numpy as np
-from DAFX import DrumChains, MasteringChains, InstChains
+from DAFX import DrumChains, AllMasteringChains, MasteringChains, InstChains
 import argparse
 from audiotools import AudioSignal
 from scipy.io.wavfile import write
@@ -12,86 +12,6 @@ from torch.utils.data import Dataset
 from natsort import natsorted
 from scipy import signal
 
-class OtherLoop(Dataset):
-    def __init__(self, loop_2sec_dataset, loop_4sec_dataset, loop_seconds,  midi_num): #60
-        self.loop2s_dataset = loop_2sec_dataset
-        self.loop4s_dataset = loop_4sec_dataset
-        self.loop_seconds = loop_seconds
-        self.loop_length = loop_seconds * self.loop2s_dataset.sample_rate
-        self.midi_num = midi_num
-    def __len__(self):
-        return len(self.midi_num)
-
-    def __getitem__(self,idx):
-        loop_4s_num = int(self.loop_seconds // 4)  # 4sec 개수
-        loop_left = int(self.loop_seconds % 4)          
-        loop_2s_num = int(loop_left // 2)               # 2sec 개수        
-        loop_left = int(loop_left % 2)                  # 1sec 유무 (0 or 1)
-
-        loop = np.array([[],[]]) #stereo
-        
-        # stack 4sec loops
-        for n in range(loop_4s_num):
-            # Choose 4s dataset randomly
-            loop4s_index = np.random.choice(len(self.loop4s_dataset))
-            loop4s, loop_name = self.loop4s_dataset[loop4s_index]
-            # pitch shift randomly
-            loop4s = librosa.effects.pitch_shift(loop4s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
-            # padding or slicing
-            if loop4s.shape[1] < (self.loop4s_dataset.sample_rate * 4):
-                loop4s = np.pad(loop4s, ((0,0),(0,self.loop4s_dataset.sample_rate * 4 - loop4s.shape[1])), mode='constant')
-            else:
-                loop4s = loop4s[:, :self.loop4s_dataset.sample_rate * 4]
-            loop = np.concatenate((loop, loop4s), axis=1)
-            
-        # stack 2sec loops  
-        for n in range(loop_2s_num):
-            # Choose 2s dataset randomly
-            loop2s_index = np.random.choice(len(self.loop2s_dataset))
-            loop2s, loop_name = self.loop2s_dataset[loop2s_index]
-            # pitch shift randomly
-            loop2s = librosa.effects.pitch_shift(loop2s, sr = self.loop2s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
-            # padding or slicing
-            if loop2s.shape[1] < (self.loop2s_dataset.sample_rate * 2):
-                loop2s = np.pad(loop2s, ((0,0),(0,self.loop2s_dataset.sample_rate * 2 - loop2s.shape[1])), mode='constant')
-            else:
-                loop2s = loop2s[:, :self.loop2s_dataset.sample_rate * 2]
-            loop = np.concatenate((loop, loop2s), axis=1)
-
-        # stack 1sec loops (randomly slice from 2s, 4s dataset)
-        if loop_left == 1:
-            # Randomly choose 2s or 4s dataset
-            loop2s_or_4s = np.random.choice([2, 4])
-            if loop2s_or_4s == 2:
-                # Choose 2s dataset randomly
-                loop2s_index = np.random.choice(len(self.loop2s_dataset))
-                loop2s, loop_name = self.loop2s_dataset[loop2s_index]
-                loop1s = loop2s[:, :self.loop2s_dataset.sample_rate]
-            else:
-                # Choose 4s dataset randomly
-                loop4s_index = np.random.choice(len(self.loop4s_dataset))
-                loop4s, loop_name = self.loop4s_dataset[loop4s_index]
-                loop1s = loop4s[:, :self.loop2s_dataset.sample_rate]
-            # pitch shift randomly
-            loop1s = librosa.effects.pitch_shift(loop1s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
-            loop = np.concatenate((loop, loop1s), axis=1)
-
-        return loop
-    
-class OtherSound(Dataset):
-    def __init__(self, directory, sample_rate):
-        self.sample_rate = sample_rate
-        self.data = [os.path.join(directory, f) for f in natsorted(os.listdir(directory)) if f.endswith('.wav')]
-        # self.data = directory내 wav파일 list
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        audio, _ = librosa.load(self.data[idx], sr=self.sample_rate, mono=False)
-        if audio.ndim == 1:
-            audio = np.stack((audio, audio)) # mono to stereo
-        return audio, self.data[idx]
 
 def generate_drum_fx(args):
     data_type = args.data_type    
@@ -101,7 +21,7 @@ def generate_drum_fx(args):
         drum_fx_one(args)
     return None
 
-def generate_drum_other_fx(kick,snare,hihat, piano, guitar, bass, args):
+def generate_drum_other_fx(kick, snare, hihat, piano, guitar, bass, args):
     # mono, sample rate
     mono = args.mono
     sample_rate = args.sample_rate
@@ -109,13 +29,16 @@ def generate_drum_other_fx(kick,snare,hihat, piano, guitar, bass, args):
     
     # define chain
     drumchains = DrumChains(mono, sample_rate)
+    instchains = InstChains(mono, sample_rate)
+    masteringchains = AllMasteringChains(mono, sample_rate)
 
-    masteringchains = MasteringChains(mono, sample_rate)
     # make DAFXed drum mix
     kick_modified, snare_modified, hihat_modified = drumchains.apply(kick, snare, hihat)
-    drum_mix_mastered = masteringchains.apply(kick_modified, snare_modified, hihat_modified)
+    piano_modified, guitar_modified, bass_modified = instchains.apply(piano, guitar, bass)
 
-    return drum_mix_mastered
+    mix_mastered_loop = masteringchains.apply(kick_modified, snare_modified, hihat_modified, piano_modified, guitar_modified, bass_modified)
+
+    return mix_mastered_loop
 
 def drum_fx_all(args):
     # mono, sample rate

@@ -396,7 +396,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_type', type=str, default='all', help='all, train, valid, test')
-    parser.add_argument('--other_sounds', type=bool, default=False, help='other sounds')
+    parser.add_argument('--other_sounds', type=bool, default=True, help='other sounds')
     parser.add_argument('--sample_rate', type=int, default=44100, help='sample_rate')
     parser.add_argument('--loop_seconds', type=int, default=5, help='loop_seconds')
     parser.add_argument('--oneshot_dir', type=str, default='./one_shots/', help='input data directory')
@@ -404,4 +404,4 @@ if __name__ == '__main__':
     parser.add_argument('--midi_number', type=int, default=20, help='midi number')
     parser.add_argument('--mono', type=bool, default=False, help='mono or stereo')
     args = parser.parse_args()
-    midi_2_wav_other_all(args)
+    generate_midi_2_wav(args)

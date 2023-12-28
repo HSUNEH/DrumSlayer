@@ -137,7 +137,7 @@ class MasteringChains():
         self.limiter[1].release_ms = float(random.randrange(2, 1001))
 
 
-    def apply(self,kick_modified, snare_modified, hihat_modified, *insts):
+    def apply(self,kick_modified, snare_modified, hihat_modified):
         #############
         # Sum chain # (mastering)
         #############
@@ -162,21 +162,265 @@ class MasteringChains():
             hihat_delayed += self.HPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
         if random.random() <= 0.01:
             hihat_delayed += self.LPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
-        
-        inst_reverbed = [[0, 0]]*len(insts)
-        inst_delayed = [[0, 0]]*len(insts)
-        for n,inst in enumerate(insts):
-            if random.random() <= 0.5:
-                inst_reverbed[n] += self.HPF(self.inst_reverb(inst[0], self.sample_rate), self.sample_rate)
-            if random.random() <= 0.01:
-                inst_reverbed +=  self.LPF(self.inst_reverb(inst[0], self.sample_rate), self.sample_rate)
-            if random.random() <= 0.5:
-                inst_delayed += self.HPF(self.inst_delay(inst_modified[0], self.sample_rate), self.sample_rate)
-            if random.random() <= 0.01:
-                inst_delayed += self.LPF(self.inst_delay(inst_modified[0], self.sample_rate), self.sample_rate)
-        
+         
         drum_mix = self.limiter(self.mix_eq.__call__([kick_modified[0] + snare_modified[0] + hihat_modified[0]])[0], self.sample_rate)
         output = drum_mix + snare_reverbed + hihat_reverbed + snare_delayed + hihat_delayed
+
+        return output.T
+    
+class AllMasteringChains():
+    def __init__(self, mono:bool, sample_rate):
+        if mono:
+            n_channels = 1
+        else:
+            n_channels = 2
+        self.mono = mono
+        self.sample_rate = sample_rate
+
+        #############
+        # Sum chain #
+        #############
+            # HPF
+        self.HPF = Pedalboard([
+            HighpassFilter(
+                cutoff_frequency_hz=2000.0
+            )
+        ])
+
+            # LPF
+        self.LPF = Pedalboard([
+            LowpassFilter(
+                cutoff_frequency_hz=200.0
+            )
+        ])
+
+            # REVERB
+        self.piano_reverb = Pedalboard([
+            Reverb(
+                room_size = 0.5, # 0 ~ 1
+                damping = 0.5, # 0 ~ 1
+                wet_level = 1.0, # 0 ~ 1
+                dry_level = 0.0, # 0 ~ 1
+                width = 1.0, # 0 ~ 1
+                freeze_mode = 0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+        self.guitar_reverb = Pedalboard([
+            Reverb(
+                room_size = 0.5, # 0 ~ 1
+                damping = 0.5, # 0 ~ 1
+                wet_level = 1.0, # 0 ~ 1
+                dry_level = 0.0, # 0 ~ 1
+                width = 1.0, # 0 ~ 1
+                freeze_mode = 0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+        self.snare_reverb = Pedalboard([
+            Reverb(
+                room_size = 0.5, # 0 ~ 1
+                damping = 0.5, # 0 ~ 1
+                wet_level = 1.0, # 0 ~ 1
+                dry_level = 0.0, # 0 ~ 1
+                width = 1.0, # 0 ~ 1
+                freeze_mode = 0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+        self.hihat_reverb = Pedalboard([
+            Reverb(
+                room_size = 0.5, # 0 ~ 1
+                damping = 0.5, # 0 ~ 1
+                wet_level = 1.0, # 0 ~ 1
+                dry_level = 0.0, # 0 ~ 1
+                width = 1.0, # 0 ~ 1
+                freeze_mode = 0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+            # DELAY
+        self.piano_delay = Pedalboard([
+            Delay(
+                delay_seconds = 0.5, # 0 ~
+                feedback = 0.0, # 0 ~ 1
+                mix = 1.0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+        self.guitar_delay = Pedalboard([
+            Delay(
+                delay_seconds = 0.5, # 0 ~
+                feedback = 0.0, # 0 ~ 1
+                mix = 1.0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+        self.snare_delay = Pedalboard([
+            Delay(
+                delay_seconds = 0.5, # 0 ~
+                feedback = 0.0, # 0 ~ 1
+                mix = 1.0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+        self.hihat_delay = Pedalboard([
+            Delay(
+                delay_seconds = 0.5, # 0 ~
+                feedback = 0.0, # 0 ~ 1
+                mix = 1.0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+            # EQ
+        mix_eq_params = ParameterList()
+        mix_eq_params.add(Parameter('first_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
+        mix_eq_params.add(Parameter('first_band_freq', 80.0, 'float', minimum=20.0, maximum=200.0))
+        mix_eq_params.add(Parameter('first_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
+        mix_eq_params.add(Parameter('second_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
+        mix_eq_params.add(Parameter('second_band_freq', 800.0, 'float', minimum=200.0, maximum=3000.0))
+        mix_eq_params.add(Parameter('second_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
+        mix_eq_params.add(Parameter('third_band_gain', 0.0, 'float', minimum=-1.0, maximum=1.0))
+        mix_eq_params.add(Parameter('third_band_freq', 6000.0, 'float', minimum=3000.0, maximum=20000.0))
+        mix_eq_params.add(Parameter('third_band_q', 1.5, 'float', minimum=0.75, maximum=3.0))
+        mix_eq = Equaliser(n_channels=n_channels, sample_rate=sample_rate, bands=['first_band', 'second_band', 'third_band'], parameters=mix_eq_params)
+        self.mix_eq = create_effects_augmentation_chain([mix_eq], ir_dir_path=None, sample_rate=sample_rate)
+
+            # LIMITER
+        self.limiter = Pedalboard([
+            pedalboard_gain(
+                gain_db = 1.0
+            ),
+            Limiter(
+                threshold_db=0.0, # MUSDB 랑 합쳐서 들어보고 판단.
+                release_ms = 100 # 2.0 ~ 1000.0
+            )
+        ])
+
+        self.HPF[0].cutoff_frequency_hz = 2000 + (random.random()*2-1)*500
+        self.LPF[0].cutoff_frequency_hz = 200 + (random.random()*2-1)*100
+
+        self.piano_reverb[0].room_size = random.random()
+        self.piano_reverb[0].damping = random.random()
+        self.piano_reverb[0].width = random.random()
+        self.piano_reverb[0].freeze_mode = random.random()
+        self.piano_reverb[1].gain_db = random.random()*(-3) - 3
+
+        self.guitar_reverb[0].room_size = random.random()
+        self.guitar_reverb[0].damping = random.random()
+        self.guitar_reverb[0].width = random.random()
+        self.guitar_reverb[0].freeze_mode = random.random()
+        self.guitar_reverb[1].gain_db = random.random()*(-3) - 3
+
+        self.snare_reverb[0].room_size = random.random()
+        self.snare_reverb[0].damping = random.random()
+        self.snare_reverb[0].width = random.random()
+        self.snare_reverb[0].freeze_mode = random.random()
+        self.snare_reverb[1].gain_db = random.random()*(-3) - 3
+
+        self.hihat_reverb[0].room_size = random.random()
+        self.hihat_reverb[0].damping = random.random()
+        self.hihat_reverb[0].width = random.random()
+        self.hihat_reverb[0].freeze_mode = random.random()
+        self.hihat_reverb[1].gain_db = random.random()*(-3) - 3
+
+        self.piano_delay[0].delay_seconds = random.random()
+        self.piano_delay[0].feedback = random.random()*0.005
+        self.piano_delay[1].gain_db = random.random()*(-3) - 7
+
+        self.guitar_delay[0].delay_seconds = random.random()
+        self.guitar_delay[0].feedback = random.random()*0.005
+        self.guitar_delay[1].gain_db = random.random()*(-3) - 7
+
+        self.snare_delay[0].delay_seconds = random.random()
+        self.snare_delay[0].feedback = random.random()*0.005
+        self.snare_delay[1].gain_db = random.random()*(-3) - 7
+
+        self.hihat_delay[0].delay_seconds = random.random()
+        self.hihat_delay[0].feedback = random.random()*0.005
+        self.hihat_delay[1].gain_db = random.random()*(-3) - 7
+
+        self.mix_eq.fxs[0][0].randomize()
+
+        self.limiter[0].gain_db = random.random()*20 + 5
+        self.limiter[1].threshold_db = -random.random()
+        self.limiter[1].release_ms = float(random.randrange(2, 1001))
+
+
+    def apply(self,kick_modified, snare_modified, hihat_modified, piano_modified, guitar_modified, bass_modified):
+        #############
+        # Sum chain # (mastering)
+        #############
+        snare_reverbed = [[0, 0]]
+        snare_delayed = [[0, 0]]
+        hihat_reverbed = [[0, 0]]
+        hihat_delayed = [[0, 0]]
+        piano_reverbed = [[0, 0]]
+        piano_delayed = [[0, 0]]
+        guitar_reverbed = [[0, 0]]
+        guitar_delayed = [[0, 0]]
+
+        if random.random() <= 0.5:
+            piano_reverbed += self.HPF(self.piano_reverb(piano_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            piano_reverbed +=  self.LPF(self.piano_reverb(piano_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            guitar_reverbed += self.HPF(self.guitar_reverb(guitar_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            guitar_reverbed +=  self.LPF(self.guitar_reverb(guitar_modified[0], self.sample_rate), self.sample_rate)
+        
+        if random.random() <= 0.5:
+            snare_reverbed += self.HPF(self.snare_reverb(snare_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            snare_reverbed +=  self.LPF(self.snare_reverb(snare_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            hihat_reverbed += self.HPF(self.hihat_reverb(hihat_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            hihat_reverbed += self.LPF(self.hihat_reverb(hihat_modified[0], self.sample_rate), self.sample_rate)
+        
+        if random.random() <= 0.5:
+            piano_delayed += self.HPF(self.piano_delay(piano_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            piano_delayed +=  self.LPF(self.piano_delay(piano_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            guitar_delayed += self.HPF(self.guitar_delay(guitar_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            guitar_delayed +=  self.LPF(self.guitar_delay(guitar_modified[0], self.sample_rate), self.sample_rate)
+
+        if random.random() <= 0.5:
+            snare_delayed += self.HPF(self.snare_delay(snare_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            snare_delayed +=  self.LPF(self.snare_delay(snare_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            hihat_delayed += self.HPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            hihat_delayed += self.LPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
+        
+
+        drum_mix = self.limiter(self.mix_eq.__call__([kick_modified[0] + snare_modified[0] + hihat_modified[0]+ piano_modified[0] + guitar_modified[0] + bass_modified[0]])[0], self.sample_rate)
+        output = drum_mix + snare_reverbed + hihat_reverbed + snare_delayed + hihat_delayed + piano_reverbed + piano_delayed + guitar_reverbed + guitar_delayed
 
         return output.T
 
@@ -440,17 +684,17 @@ class InstChains():
 
 
 
-    def apply(self, piano, snare, hihat):
-        self.update_chains([piano, snare, hihat])
+    def apply(self, piano, guitar, bass):
+        self.update_chains([piano, guitar, bass])
 
         #####################
         # Individual chains # (mixing)
         #####################
         piano_modified = self.piano_chain.__call__([piano.T])
-        # numpy to wav write
-        piano_dir = ''
-        write(piano_dir + f'.wav', 48000, piano_modified.T)
-        return piano_modified
+        guitar_modified = self.guitar_chain.__call__([guitar.T])
+        bass_modified = self.bass_chain.__call__([bass.T])
+
+        return piano_modified, guitar_modified, bass_modified
 
 
 class SSChains():
