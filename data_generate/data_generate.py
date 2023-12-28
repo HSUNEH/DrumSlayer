@@ -21,13 +21,13 @@ if __name__ == '__main__':
 
     # TODO 2 : midi 2 wav 
     midi_2_wav.generate_midi_2_wav(args)
+    #args.other_sounds == True 이면 midi_2_wav에서 한번에 처리
 
     # TODO 3 : DAFX
-    if args.other_sounds:
-        DAFXChain.generate_drum_other_fx(args)
-    else:
+    if not args.other_sounds:
         DAFXChain.generate_drum_fx(args)
 
+    
     # midi 10개, beat 1, sample rate 48000 -> 27m
     # -> 1개당 2.7m
     # 1000개 -> 2700m -> 약 2M

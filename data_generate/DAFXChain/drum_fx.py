@@ -13,55 +13,70 @@ from natsort import natsorted
 from scipy import signal
 
 class OtherLoop(Dataset):
-    def __init__(self, loop_2sec_dataset, loop_4sec_dataset, loop_seconds, output_dir, data_type, inst): #60
+    def __init__(self, loop_2sec_dataset, loop_4sec_dataset, loop_seconds,  midi_num): #60
         self.loop2s_dataset = loop_2sec_dataset
         self.loop4s_dataset = loop_4sec_dataset
+        self.loop_seconds = loop_seconds
         self.loop_length = loop_seconds * self.loop2s_dataset.sample_rate
-        self.output_dir = output_dir
-        self.data_type = data_type
-        self.inst = inst
+        self.midi_num = midi_num
     def __len__(self):
-        return len(self.mididataset)
+        return len(self.midi_num)
 
-    def __getitem__(self, index):
+    def __getitem__(self,idx):
+        loop_4s_num = int(self.loop_seconds // 4)  # 4sec 개수
+        loop_left = int(self.loop_seconds % 4)          
+        loop_2s_num = int(loop_left // 2)               # 2sec 개수        
+        loop_left = int(loop_left % 2)                  # 1sec 유무 (0 or 1)
 
-        # Choose a random dataset
-        ssindex = np.random.choice(len(self.loop2s_dataset))
-        midiindex = index
-
-        # Get singleshot & velocity & pitch
-        ss, ss_name = self.loop2s_dataset[ssindex]
-        ss_name = os.path.basename(ss_name)
-        # TODO : singleshot 저장
-        ss_file = self.output_dir + f'drum_data_{self.data_type}/{self.inst}ShotList.txt'
-        if midiindex == 0:
-            np.savetxt(ss_file, np.reshape(ss_name, (1,)), fmt='%s')
-        else:
-            with open(ss_file, 'a') as f:
-                np.savetxt(f, np.reshape(ss_name, (1,)), fmt='%s')
-
-        velocity, pitch = self.mididataset[midiindex]
-        onset = (velocity != 0).astype(int)
-        # pitch_shifted = (pitch - self.reference_pitch)*onset
-
-        # Make a list consisted of velocity and pitch
-        velocity_and_pitch = []
-        # for pitch in np.unique(pitch_shifted):
-        #     mask = pitch_shifted == pitch
-        #     velocity_masked = velocity * mask
-        #     velocity_and_pitch.append([velocity_masked, pitch])
-
-        # Make a loop
-        loop = np.zeros((2, self.loop_length))
-        for velocity, pitch in velocity_and_pitch:
-            if pitch != 0:
-                ss_shifted = librosa.effects.pitch_shift(ss, sr=self.loop2s_dataset.sample_rate, n_steps=pitch)
+        loop = np.array([[],[]]) #stereo
+        
+        # stack 4sec loops
+        for n in range(loop_4s_num):
+            # Choose 4s dataset randomly
+            loop4s_index = np.random.choice(len(self.loop4s_dataset))
+            loop4s, loop_name = self.loop4s_dataset[loop4s_index]
+            # pitch shift randomly
+            loop4s = librosa.effects.pitch_shift(loop4s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
+            # padding or slicing
+            if loop4s.shape[1] < (self.loop4s_dataset.sample_rate * 4):
+                loop4s = np.pad(loop4s, ((0,0),(0,self.loop4s_dataset.sample_rate * 4 - loop4s.shape[1])), mode='constant')
             else:
-                ss_shifted = ss
-            loop += np.array([signal.convolve(velocity, ss_shifted[0])[:self.loop_length], 
-                            signal.convolve(velocity, ss_shifted[1])[:self.loop_length]])
+                loop4s = loop4s[:, :self.loop4s_dataset.sample_rate * 4]
+            loop = np.concatenate((loop, loop4s), axis=1)
+            
+        # stack 2sec loops  
+        for n in range(loop_2s_num):
+            # Choose 2s dataset randomly
+            loop2s_index = np.random.choice(len(self.loop2s_dataset))
+            loop2s, loop_name = self.loop2s_dataset[loop2s_index]
+            # pitch shift randomly
+            loop2s = librosa.effects.pitch_shift(loop2s, sr = self.loop2s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
+            # padding or slicing
+            if loop2s.shape[1] < (self.loop2s_dataset.sample_rate * 2):
+                loop2s = np.pad(loop2s, ((0,0),(0,self.loop2s_dataset.sample_rate * 2 - loop2s.shape[1])), mode='constant')
+            else:
+                loop2s = loop2s[:, :self.loop2s_dataset.sample_rate * 2]
+            loop = np.concatenate((loop, loop2s), axis=1)
 
-        return loop, velocity, pitch
+        # stack 1sec loops (randomly slice from 2s, 4s dataset)
+        if loop_left == 1:
+            # Randomly choose 2s or 4s dataset
+            loop2s_or_4s = np.random.choice([2, 4])
+            if loop2s_or_4s == 2:
+                # Choose 2s dataset randomly
+                loop2s_index = np.random.choice(len(self.loop2s_dataset))
+                loop2s, loop_name = self.loop2s_dataset[loop2s_index]
+                loop1s = loop2s[:, :self.loop2s_dataset.sample_rate]
+            else:
+                # Choose 4s dataset randomly
+                loop4s_index = np.random.choice(len(self.loop4s_dataset))
+                loop4s, loop_name = self.loop4s_dataset[loop4s_index]
+                loop1s = loop4s[:, :self.loop2s_dataset.sample_rate]
+            # pitch shift randomly
+            loop1s = librosa.effects.pitch_shift(loop1s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
+            loop = np.concatenate((loop, loop1s), axis=1)
+
+        return loop
     
 class OtherSound(Dataset):
     def __init__(self, directory, sample_rate):
@@ -75,69 +90,38 @@ class OtherSound(Dataset):
     def __getitem__(self, idx):
         audio, _ = librosa.load(self.data[idx], sr=self.sample_rate, mono=False)
         if audio.ndim == 1:
-            audio = np.stack((audio, audio))
+            audio = np.stack((audio, audio)) # mono to stereo
         return audio, self.data[idx]
 
 def generate_drum_fx(args):
-    data_type = args.data_type
-    if args.other_sounds:
-        generate_drum_other_fx(args)
-    else:    
-        if data_type == 'all':
-            drum_fx_all(args)
-        else:
-            drum_fx_one(args)
+    data_type = args.data_type    
+    if data_type == 'all':
+        drum_fx_all(args)
+    else:
+        drum_fx_one(args)
     return None
 
-def generate_drum_other_fx(args):
+def generate_drum_other_fx(kick,snare,hihat, piano, guitar, bass, args):
     # mono, sample rate
-    for num, data_type in enumerate(['train', 'valid', 'test']):
-        midi_number = args.midi_number
-        midi_number = [int(midi_number*0.9), int(midi_number*0.05), int(midi_number*0.05)]
-        mono = args.mono
-        sample_rate = args.sample_rate
-        output_dir = args.output_dir
-        oneshot_dir = args.oneshot_dir
-        loop_seconds = args.loop_seconds
-        # define chain
-        drumchains = DrumChains(mono, sample_rate)
-        masteringchains = MasteringChains(mono, sample_rate)
+    mono = args.mono
+    sample_rate = args.sample_rate
+    output_dir = args.output_dir
+    
+    # define chain
+    drumchains = DrumChains(mono, sample_rate)
 
-        loop_piano_2sec = OtherSound(oneshot_dir + f'piano/2sec' , sample_rate)
-        loop_piano_4sec = OtherSound(oneshot_dir + f'piano/2sec' , sample_rate)
-        loop_guitar_2sec = OtherSound(oneshot_dir + f'guitar/2sec' , sample_rate)
-        loop_guitar_4sec = OtherSound(oneshot_dir + f'guitar/2sec' , sample_rate)
-        loop_bass_2sec = OtherSound(oneshot_dir + f'bass/2sec' , sample_rate)
-        loop_bass_4sec = OtherSound(oneshot_dir + f'bass/2sec' , sample_rate)
+    masteringchains = MasteringChains(mono, sample_rate)
+    # make DAFXed drum mix
+    kick_modified, snare_modified, hihat_modified = drumchains.apply(kick, snare, hihat)
+    drum_mix_mastered = masteringchains.apply(kick_modified, snare_modified, hihat_modified)
 
-        loop_piano = OtherLoop(loop_piano_2sec,loop_piano_4sec,loop_seconds, output_dir, data_type, 'piano')
-
-        for i in tqdm(range(midi_number[num]), desc=f'DAFX {data_type} data'):
-            # prepare kick, hihat, snare loops. should be numpy array!
-            kick = AudioSignal(output_dir + f'drum_data_{data_type}/generated_loops/kick/{i}.wav').numpy().squeeze()
-            snare = AudioSignal(output_dir + f'drum_data_{data_type}/generated_loops/snare/{i}.wav').numpy().squeeze()
-            hihat = AudioSignal(output_dir + f'drum_data_{data_type}/generated_loops/hhclosed/{i}.wav').numpy().squeeze()
-
-            # make DAFXed drum mix
-            kick_modified, snare_modified, hihat_modified = drumchains.apply(kick, snare, hihat)
-
-            # TODO 
-
-            drum_mix_mastered = masteringchains.apply(kick_modified, snare_modified, hihat_modified)
-
-            # numpy to wav write
-            dafx_loop_dir = output_dir + f'drum_data_{data_type}/dafx_loops/'
-            os.makedirs(dafx_loop_dir, exist_ok=True)
-            write(dafx_loop_dir + f'{i}.wav', sample_rate, drum_mix_mastered.T)
-
-
-    return None
+    return drum_mix_mastered
 
 def drum_fx_all(args):
     # mono, sample rate
     for num, data_type in enumerate(['train', 'valid', 'test']):
         midi_number = args.midi_number
-        midi_number = [int(midi_number*0.9), int(midi_number*0.05), int(midi_number*0.05)]
+        midi_numbers = [int(midi_number*0.9), int(midi_number*0.05), int(midi_number*0.05)]
         mono = args.mono
         sample_rate = args.sample_rate
         output_dir = args.output_dir
@@ -146,17 +130,16 @@ def drum_fx_all(args):
         masteringchains = MasteringChains(mono, sample_rate)
 
 
-        for i in tqdm(range(midi_number[num]), desc=f'DAFX {data_type} data'):
+        for i in tqdm(range(midi_numbers[num]), desc=f'DAFX {data_type} data'):
             # prepare kick, hihat, snare loops. should be numpy array!
             kick = AudioSignal(output_dir + f'drum_data_{data_type}/generated_loops/kick/{i}.wav').numpy().squeeze()
             snare = AudioSignal(output_dir + f'drum_data_{data_type}/generated_loops/snare/{i}.wav').numpy().squeeze()
-            hihat = AudioSignal(output_dir + f'drum_data_{data_type}/generated_loops/hhclosed/{i}.wav').numpy().squeeze()
+            hihat = AudioSignal(output_dir + f'drum_data_{data_type}/generated_loops/hhclosed/{i}.wav').numpy().squeeze() #(2, 220500)
 
             # make DAFXed drum mix
             kick_modified, snare_modified, hihat_modified = drumchains.apply(kick, snare, hihat)
 
-            # TODO 
-
+            # mastering
             drum_mix_mastered = masteringchains.apply(kick_modified, snare_modified, hihat_modified)
 
             # numpy to wav write
@@ -205,6 +188,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_type', type=str, default='all', help='train, val, test')
     parser.add_argument('--oneshot_dir', type=str, default='/Users/hwang/DrumSlayer/data_generate/midi_2_wav/one_shots/', help='input data directory')
     parser.add_argument('--output_dir', type=str, default='/Users/hwang/DrumSlayer/data_generate/generated_data/', help='output data directory')
+    parser.add_argument('--loop_seconds', type=int, default=5, help='loop_seconds')
     args = parser.parse_args()
-    generate_drum_other_fx(args)
+    drum_fx_all(args)
     
