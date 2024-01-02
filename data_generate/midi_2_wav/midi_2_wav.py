@@ -95,7 +95,7 @@ class OtherSound(Dataset):
 
 # TODO : 앞 sample 자르고 들어가기 
 class Loop(Dataset):
-    def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, output_dir, data_type, inst, reference_pitch=48): #60
+    def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, output_dir, data_type, inst, reference_pitch=48, render_type='slice'): #60
         self.ssdataset = single_shot_dataset
         self.mididataset = midi_dataset
         self.loop_length = loop_seconds * self.ssdataset.sample_rate
@@ -103,6 +103,7 @@ class Loop(Dataset):
         self.output_dir = output_dir
         self.data_type = data_type
         self.inst = inst
+        self.render_type = render_type
     def __len__(self):
         return len(self.mididataset)
 
@@ -122,26 +123,27 @@ class Loop(Dataset):
             with open(ss_file, 'a') as f:
                 np.savetxt(f, np.reshape(ss_name, (1,)), fmt='%s')
 
-        velocity, pitch = self.mididataset[midiindex]
-        onset = (velocity != 0).astype(int)
-        pitch_shifted = (pitch - self.reference_pitch)*onset
-
-        # Make a list consisted of velocity and pitch
-        velocity_and_pitch = []
-        for pitch in np.unique(pitch_shifted):
-            mask = pitch_shifted == pitch
-            velocity_masked = velocity * mask
-            velocity_and_pitch.append([velocity_masked, pitch])
-
-        # Make a loop
+        velocity, pitch = self.mididataset[midiindex] # MIDI dataset returns velocity and pitch, but we don't use pitch for drum loop dataset.
         loop = np.zeros((2, self.loop_length))
-        for velocity, pitch in velocity_and_pitch:
-            if pitch != 0:
-                ss_shifted = librosa.effects.pitch_shift(ss, sr=self.ssdataset.sample_rate, n_steps=pitch)
-            else:
-                ss_shifted = ss
-            loop += np.array([signal.convolve(velocity, ss_shifted[0])[:self.loop_length], 
-                            signal.convolve(velocity, ss_shifted[1])[:self.loop_length]])
+
+        if self.render_type == 'convolution':
+            loop = np.array([signal.convolve(velocity, ss[0])[:self.loop_length], 
+                             signal.convolve(velocity, ss[1])[:self.loop_length]])
+
+        elif  self.render_type == 'slice':
+            onset_idx_list = velocity.nonzero()[0].tolist()
+            for i, onset_idx in enumerate(onset_idx_list):
+                # Calculate the interval between current and next onset. 
+                if i< len(onset_idx_list) -1: 
+                    interval = onset_idx_list[i+1] - onset_idx
+                else:
+                    interval = self.loop_length - onset_idx
+
+                # Place the singleshot at the onset position.
+                if interval < ss.shape[1]:
+                    loop[:, onset_idx:onset_idx+interval] +=  velocity[onset_idx] * ss[:, :interval]
+                else:
+                    loop[:, onset_idx:onset_idx+ss.shape[1]] += velocity[onset_idx] * ss
 
         return loop, velocity, pitch
 
@@ -206,6 +208,7 @@ def midi_2_wav_other_all(args):
         loop_seconds = args.loop_seconds
         oneshot_dir = args.oneshot_dir
         output_dir = args.output_dir
+        render_type = args.render_type
 
         #single shot dir
         dir_ss_kick =       oneshot_dir + f'{data_type}/kick'
@@ -273,6 +276,7 @@ def midi_2_wav_all(args):
         loop_seconds = args.loop_seconds
         oneshot_dir = args.oneshot_dir
         output_dir = args.output_dir
+        render_type = args.render_type
 
         #single shot dir
         dir_ss_kick =       oneshot_dir + f'{data_type}/kick'
@@ -294,9 +298,9 @@ def midi_2_wav_all(args):
         midi_snare = MIDI(dir_midi_snare,sample_rate, loop_seconds)
         midi_hhclosed = MIDI(dir_midi_hhclosed,sample_rate, loop_seconds) 
 
-        loop_kick = Loop(ss_kick, midi_kick, loop_seconds, output_dir, data_type, 'kick')
-        loop_snare = Loop(ss_snare, midi_snare, loop_seconds, output_dir, data_type, 'snare')
-        loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds, output_dir, data_type, 'hihat')
+        loop_kick = Loop(ss_kick, midi_kick, loop_seconds, output_dir, data_type, 'kick', render_type=render_type)
+        loop_snare = Loop(ss_snare, midi_snare, loop_seconds, output_dir, data_type, 'snare', render_type=render_type)
+        loop_hhclosed = Loop(ss_hhclosed, midi_hhclosed, loop_seconds, output_dir, data_type, 'hihat', render_type=render_type)
 
         # Bring the each loop separately
         for idx in tqdm(range(len(loop_kick)), desc=f'midi2wav {data_type} data'): 
@@ -322,6 +326,7 @@ def midi_2_wav_all(args):
 
     return None
 
+# TODO: Need to update filenames, arguments to function call, etc.
 def midi_2_wav_one(args):
     from tqdm import tqdm
     import soundfile as sf
