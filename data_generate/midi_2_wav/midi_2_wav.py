@@ -22,7 +22,7 @@ class OtherLoop(Dataset):
     def __len__(self):
         return 1
 
-    def __getitem__(self,idx):
+    def __getitem__(self,inst):
         loop_4s_num = int(self.loop_seconds // 4)  # 4sec 개수
         loop_left = int(self.loop_seconds % 4)          
         loop_2s_num = int(loop_left // 2)               # 2sec 개수        
@@ -36,7 +36,10 @@ class OtherLoop(Dataset):
             loop4s_index = np.random.choice(len(self.loop4s_dataset))
             loop4s, loop_name = self.loop4s_dataset[loop4s_index]
             # pitch shift randomly
-            loop4s = librosa.effects.pitch_shift(loop4s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
+            if inst == 'bass':
+                loop4s = librosa.effects.pitch_shift(loop4s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-6, 2))
+            else:
+                loop4s = librosa.effects.pitch_shift(loop4s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
             # padding or slicing
             if loop4s.shape[1] < (self.loop4s_dataset.sample_rate * 4):
                 loop4s = np.pad(loop4s, ((0,0),(0,self.loop4s_dataset.sample_rate * 4 - loop4s.shape[1])), mode='constant')
@@ -50,7 +53,10 @@ class OtherLoop(Dataset):
             loop2s_index = np.random.choice(len(self.loop2s_dataset))
             loop2s, loop_name = self.loop2s_dataset[loop2s_index]
             # pitch shift randomly
-            loop2s = librosa.effects.pitch_shift(loop2s, sr = self.loop2s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
+            if inst == 'bass':
+                loop2s = librosa.effects.pitch_shift(loop2s, sr = self.loop2s_dataset.sample_rate, n_steps=np.random.randint(-6, 2))
+            else:
+                loop2s = librosa.effects.pitch_shift(loop2s, sr = self.loop2s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
             # padding or slicing
             if loop2s.shape[1] < (self.loop2s_dataset.sample_rate * 2):
                 loop2s = np.pad(loop2s, ((0,0),(0,self.loop2s_dataset.sample_rate * 2 - loop2s.shape[1])), mode='constant')
@@ -73,7 +79,10 @@ class OtherLoop(Dataset):
                 loop4s, loop_name = self.loop4s_dataset[loop4s_index]
                 loop1s = loop4s[:, :self.loop2s_dataset.sample_rate]
             # pitch shift randomly
-            loop1s = librosa.effects.pitch_shift(loop1s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
+            if inst == 'bass':
+                loop1s = librosa.effects.pitch_shift(loop1s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-6, 2))
+            else:
+                loop1s = librosa.effects.pitch_shift(loop1s, sr = self.loop4s_dataset.sample_rate, n_steps=np.random.randint(-12, 12))
             loop = np.concatenate((loop, loop1s), axis=1)
 
         return loop
@@ -248,9 +257,9 @@ def midi_2_wav_other_all(args):
             audio_loop_snare, _, _  = loop_snare[idx]
             audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
 
-            audio_loop_piano = loop_piano[idx]
-            audio_loop_guitar = loop_guitar[idx]
-            audio_loop_bass = loop_bass[idx]
+            audio_loop_piano = loop_piano['piano']
+            audio_loop_guitar = loop_guitar['guitar']
+            audio_loop_bass = loop_bass['bass']
 
             # loop + DAFX => mixed_loop
             mixed_loop = generate_drum_other_fx(audio_loop_kick, audio_loop_snare, audio_loop_hhclosed, audio_loop_piano, audio_loop_guitar, audio_loop_bass, args)
