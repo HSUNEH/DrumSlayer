@@ -86,6 +86,39 @@ class OtherLoop(Dataset):
             loop = np.concatenate((loop, loop1s), axis=1)
 
         return loop
+
+class VocalLoop(Dataset):
+    def __init__(self, loop_vocal_dataset, loop_seconds): #60
+        self.loop_vocal_dataset = loop_vocal_dataset
+        self.loop_seconds = loop_seconds
+        self.loop_length = loop_seconds * self.loop_vocal_dataset.sample_rate
+    def __len__(self):
+        return 1
+
+    def __getitem__(self,inst):
+
+        loop = np.array([[],[]]) #stereo
+        
+        # 1. choose sample ramdomly
+        loop_index = np.random.choice(len(self.loop_vocal_dataset))
+        vocal_loop, loop_name = self.loop_vocal_dataset[loop_index]
+        
+        # 2. sample length
+        if vocal_loop.shape[1] > self.loop_length:
+            #randomly slice vocal_loop
+            start = np.random.randint(0, vocal_loop.shape[1] - self.loop_length)
+            loop = vocal_loop[:, start:start+self.loop_length]
+        else:
+            # loop_length가 채워질 때 까지 vocal_loop을 반복해서 붙임
+            loop = np.tile(vocal_loop, (1, self.loop_length // vocal_loop.shape[1] + 1))
+            loop = loop[:, :self.loop_length]
+
+        # 3. pitch shift randomly
+        loop = librosa.effects.pitch_shift(loop, sr = self.loop_vocal_dataset.sample_rate, n_steps=np.random.randint(-12,12))
+
+
+        return loop
+
     
 class OtherSound(Dataset):
     def __init__(self, directory, sample_rate):
@@ -102,7 +135,6 @@ class OtherSound(Dataset):
             audio = np.stack((audio, audio)) # mono to stereo
         return audio, self.data[idx]
 
-# TODO : 앞 sample 자르고 들어가기 
 class Loop(Dataset):
     def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, output_dir, data_type, inst, reference_pitch=48, render_type='slice'): #60
         self.ssdataset = single_shot_dataset
@@ -124,13 +156,14 @@ class Loop(Dataset):
         # Get singleshot & velocity & pitch
         ss, ss_name = self.ssdataset[ssindex]
         ss_name = os.path.basename(ss_name)
-        # TODO : singleshot 저장
+        # singleshot list 저장
         ss_file = self.output_dir + f'drum_data_{self.data_type}/{self.inst}ShotList.txt'
         if midiindex == 0:
             np.savetxt(ss_file, np.reshape(ss_name, (1,)), fmt='%s')
         else:
             with open(ss_file, 'a') as f:
                 np.savetxt(f, np.reshape(ss_name, (1,)), fmt='%s')
+
 
         velocity, pitch = self.mididataset[midiindex] # MIDI dataset returns velocity and pitch, but we don't use pitch for drum loop dataset.
         loop = np.zeros((2, self.loop_length))
@@ -210,6 +243,7 @@ def midi_2_wav_other_all(args):
     import torch
     all = ['train', 'valid', 'test']
     midi_number = args.midi_number
+    loop_seconds = args.loop_seconds
     midi_numbers = [int(midi_number*0.9), int(midi_number*0.05), int(midi_number*0.05)]
     for data_type in all:
         
@@ -249,10 +283,15 @@ def midi_2_wav_other_all(args):
         loop_guitar_4sec = OtherSound(oneshot_dir + f'guitar/4sec' , sample_rate)
         loop_bass_2sec = OtherSound(oneshot_dir + f'bass/2sec' , sample_rate)
         loop_bass_4sec = OtherSound(oneshot_dir + f'bass/4sec' , sample_rate)
+        
+        sample_vocal = OtherSound(oneshot_dir + f'vocals' , sample_rate)
+        # TODO : vocal cut by loop_seconds
 
         loop_piano = OtherLoop(loop_piano_2sec,loop_piano_4sec,loop_seconds)
         loop_guitar = OtherLoop(loop_guitar_2sec,loop_guitar_4sec,loop_seconds )
         loop_bass = OtherLoop(loop_bass_2sec,loop_bass_4sec,loop_seconds)
+
+        loop_vocal = VocalLoop(sample_vocal, loop_seconds)
 
         # Bring the each loop separately
         for idx in tqdm(range(len(loop_kick)), desc=f'midi2wav {data_type} data'): 
@@ -263,9 +302,10 @@ def midi_2_wav_other_all(args):
             audio_loop_piano = loop_piano['piano']
             audio_loop_guitar = loop_guitar['guitar']
             audio_loop_bass = loop_bass['bass']
+            audio_loop_vocal = loop_vocal['vocal']
 
             # loop + DAFX => mixed_loop
-            mixed_loop = generate_drum_other_fx(audio_loop_kick, audio_loop_snare, audio_loop_hhclosed, audio_loop_piano, audio_loop_guitar, audio_loop_bass, args)
+            mixed_loop = generate_drum_other_fx(audio_loop_kick, audio_loop_snare, audio_loop_hhclosed, audio_loop_piano, audio_loop_guitar, audio_loop_bass, audio_loop_vocal,args)
             
             # numpy to wav write
             mixed_loop_dir = output_dir + f'drum_data_{data_type}/mixed_loops/'

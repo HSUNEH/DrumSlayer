@@ -14,7 +14,7 @@ torch.manual_seed(0)
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_type', type=str, default='all', help='all, train, valid, test')
-    parser.add_argument('--other_sounds', type=bool, default=False, help='other sounds')
+    parser.add_argument('--other_sounds', type=bool, default=True, help='other sounds')
     parser.add_argument('--midi_number', type=int, default=1000, help='midi number')
     # parser.add_argument('--beat', type=int, default=1, help='beat')
     parser.add_argument('--loop_seconds', type=int, default=5, help='loop_seconds')
@@ -27,12 +27,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # TODO 1 : midi gen 
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     midi_2_wav.generate_midi(args)
 
     # TODO 2 : midi 2 wav 
-    midi_2_wav.generate_midi_2_wav(args)
-    import pdb; pdb.set_trace()
+    midi_2_wav.generate_midi_2_wav (args)
+    # import pdb; pdb.set_trace()
     #args.other_sounds == True 이면 midi_2_wav에서 한번에 처리
 
     # TODO 3 : DAFX

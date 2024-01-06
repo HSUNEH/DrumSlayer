@@ -1,5 +1,5 @@
 import numpy as np
-from DAFX import DrumChains, AllMasteringChains, MasteringChains, InstChains
+from DAFX import DrumChains, AllMasteringChains, MasteringChains, InstChains, VocalChains
 import argparse
 from audiotools import AudioSignal
 from scipy.io.wavfile import write
@@ -11,7 +11,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from natsort import natsorted
 from scipy import signal
-
+# TODO : vocalchain 만들기, masteringchain vocal 추가
 
 def generate_drum_fx(args):
     data_type = args.data_type    
@@ -21,7 +21,7 @@ def generate_drum_fx(args):
         drum_fx_one(args)
     return None
 
-def generate_drum_other_fx(kick, snare, hihat, piano, guitar, bass, args):
+def generate_drum_other_fx(kick, snare, hihat, piano, guitar, bass, vocal, args):
     # mono, sample rate
     mono = args.mono
     sample_rate = args.sample_rate
@@ -30,13 +30,15 @@ def generate_drum_other_fx(kick, snare, hihat, piano, guitar, bass, args):
     # define chain
     drumchains = DrumChains(mono, sample_rate)
     instchains = InstChains(mono, sample_rate)
+    vocalchains = VocalChains(mono, sample_rate)
     masteringchains = AllMasteringChains(mono, sample_rate)
 
     # make DAFXed drum mix
     kick_modified, snare_modified, hihat_modified = drumchains.apply(kick, snare, hihat)
     piano_modified, guitar_modified, bass_modified = instchains.apply(piano, guitar, bass)
+    vocal_modified = vocalchains.apply(vocal)
 
-    mix_mastered_loop = masteringchains.apply(kick_modified, snare_modified, hihat_modified, piano_modified, guitar_modified, bass_modified)
+    mix_mastered_loop = masteringchains.apply(kick_modified, snare_modified, hihat_modified, piano_modified, guitar_modified, bass_modified, vocal_modified)
 
     return mix_mastered_loop
 

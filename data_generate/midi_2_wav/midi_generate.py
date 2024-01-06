@@ -95,7 +95,7 @@ def generate_midi_all(args):
                                 start = np.random.randint(0, (tick_number * 480) -1)
                             onsets.append(start)
                     elif args.grid_random == 'G':
-                        if b == 2: 
+                        if b == 2: #snare
                             start = int(tick_number * 480 / note_number) * i + int(tick_number * 480 / note_number / 2)
                         else:
                             start = int(tick_number * 480 / note_number) * i 

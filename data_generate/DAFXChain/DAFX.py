@@ -222,7 +222,19 @@ class AllMasteringChains():
                 gain_db = 1.0
             )
         ])
-
+        self.vocal_reverb = Pedalboard([
+            Reverb(
+                room_size = 0.5, # 0 ~ 1
+                damping = 0.5, # 0 ~ 1
+                wet_level = 1.0, # 0 ~ 1
+                dry_level = 0.0, # 0 ~ 1
+                width = 1.0, # 0 ~ 1
+                freeze_mode = 0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
         self.snare_reverb = Pedalboard([
             Reverb(
                 room_size = 0.5, # 0 ~ 1
@@ -263,6 +275,18 @@ class AllMasteringChains():
         ])
 
         self.guitar_delay = Pedalboard([
+            Delay(
+                delay_seconds = 0.5, # 0 ~
+                feedback = 0.0, # 0 ~ 1
+                mix = 1.0 # 0 ~ 1
+            ),
+            pedalboard_gain(
+                gain_db = 1.0
+            )
+        ])
+
+
+        self.vocal_delay = Pedalboard([
             Delay(
                 delay_seconds = 0.5, # 0 ~
                 feedback = 0.0, # 0 ~ 1
@@ -334,6 +358,12 @@ class AllMasteringChains():
         self.guitar_reverb[0].freeze_mode = random.random()
         self.guitar_reverb[1].gain_db = random.random()*(-3) - 3
 
+        self.vocal_reverb[0].room_size = random.random()
+        self.vocal_reverb[0].damping = random.random()
+        self.vocal_reverb[0].width = random.random()
+        self.vocal_reverb[0].freeze_mode = random.random()
+        self.vocal_reverb[1].gain_db = random.random()*(-3) - 3
+
         self.snare_reverb[0].room_size = random.random()
         self.snare_reverb[0].damping = random.random()
         self.snare_reverb[0].width = random.random()
@@ -354,6 +384,10 @@ class AllMasteringChains():
         self.guitar_delay[0].feedback = random.random()*0.005
         self.guitar_delay[1].gain_db = random.random()*(-3) - 7
 
+        self.vocal_delay[0].delay_seconds = random.random()
+        self.vocal_delay[0].feedback = random.random()*0.005
+        self.vocal_delay[1].gain_db = random.random()*(-3) - 7
+
         self.snare_delay[0].delay_seconds = random.random()
         self.snare_delay[0].feedback = random.random()*0.005
         self.snare_delay[1].gain_db = random.random()*(-3) - 7
@@ -369,7 +403,7 @@ class AllMasteringChains():
         self.limiter[1].release_ms = float(random.randrange(2, 1001))
 
 
-    def apply(self,kick_modified, snare_modified, hihat_modified, piano_modified, guitar_modified, bass_modified):
+    def apply(self,kick_modified, snare_modified, hihat_modified, piano_modified, guitar_modified, bass_modified, vocal_modified):
         #############
         # Sum chain # (mastering)
         #############
@@ -381,6 +415,8 @@ class AllMasteringChains():
         piano_delayed = [[0, 0]]
         guitar_reverbed = [[0, 0]]
         guitar_delayed = [[0, 0]]
+        vocal_reverbed = [[0, 0]]
+        vocal_delayed = [[0, 0]]
 
         if random.random() <= 0.5:
             piano_reverbed += self.HPF(self.piano_reverb(piano_modified[0], self.sample_rate), self.sample_rate)
@@ -390,7 +426,12 @@ class AllMasteringChains():
             guitar_reverbed += self.HPF(self.guitar_reverb(guitar_modified[0], self.sample_rate), self.sample_rate)
         if random.random() <= 0.01:
             guitar_reverbed +=  self.LPF(self.guitar_reverb(guitar_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            vocal_reverbed += self.HPF(self.vocal_reverb(vocal_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            vocal_reverbed +=  self.LPF(self.vocal_reverb(vocal_modified[0], self.sample_rate), self.sample_rate)
         
+
         if random.random() <= 0.5:
             snare_reverbed += self.HPF(self.snare_reverb(snare_modified[0], self.sample_rate), self.sample_rate)
         if random.random() <= 0.01:
@@ -408,6 +449,11 @@ class AllMasteringChains():
             guitar_delayed += self.HPF(self.guitar_delay(guitar_modified[0], self.sample_rate), self.sample_rate)
         if random.random() <= 0.01:
             guitar_delayed +=  self.LPF(self.guitar_delay(guitar_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.5:
+            vocal_delayed += self.HPF(self.vocal_delay(vocal_modified[0], self.sample_rate), self.sample_rate)
+        if random.random() <= 0.01:
+            vocal_delayed +=  self.LPF(self.vocal_delay(vocal_modified[0], self.sample_rate), self.sample_rate)
+
 
         if random.random() <= 0.5:
             snare_delayed += self.HPF(self.snare_delay(snare_modified[0], self.sample_rate), self.sample_rate)
@@ -419,8 +465,8 @@ class AllMasteringChains():
             hihat_delayed += self.LPF(self.hihat_delay(hihat_modified[0], self.sample_rate), self.sample_rate)
         
 
-        drum_mix = self.limiter(self.mix_eq.__call__([kick_modified[0] + snare_modified[0] + hihat_modified[0]+ piano_modified[0] + guitar_modified[0] + bass_modified[0]])[0], self.sample_rate)
-        output = drum_mix + snare_reverbed + hihat_reverbed + snare_delayed + hihat_delayed + piano_reverbed + piano_delayed + guitar_reverbed + guitar_delayed
+        drum_mix = self.limiter(self.mix_eq.__call__([kick_modified[0] + snare_modified[0] + hihat_modified[0]+ piano_modified[0] + guitar_modified[0] + bass_modified[0]+vocal_modified[0]])[0], self.sample_rate)
+        output = drum_mix + snare_reverbed + hihat_reverbed + snare_delayed + hihat_delayed + piano_reverbed + piano_delayed + guitar_reverbed + guitar_delayed + vocal_reverbed + vocal_delayed
 
         return output.T
 
@@ -696,6 +742,96 @@ class InstChains():
 
         return piano_modified, guitar_modified, bass_modified
 
+class VocalChains():
+    def __init__(self, mono:bool, sample_rate):
+        if mono:
+            n_channels = 1
+        else:
+            n_channels = 2
+        self.mono = mono
+        self.sample_rate = sample_rate
+
+        #####################
+        # Individual chains #
+        #####################
+        # GAIN
+        # RMS 분포 -> gain
+        vocal_gain_params = ParameterList()
+        vocal_gain_params.add(Parameter('gain', -15.0, 'float', units='dB', minimum=-21.0, maximum=-14.0))
+        vocal_gain_params.add(Parameter('invert', False, 'bool'))
+        vocal_gain = Gain(parameters=vocal_gain_params)
+
+            # EQ
+        vocal_eq_params = ParameterList()
+        vocal_eq_params.add(Parameter('low_shelf_gain', -2, 'float', minimum=-3, maximum=0))
+        vocal_eq_params.add(Parameter('low_shelf_freq', 50.0, 'float', minimum=50.0, maximum=100.0))
+        vocal_eq_params.add(Parameter('first_band_gain', 0.0, 'float', minimum=-2.0, maximum=2.0))
+        vocal_eq_params.add(Parameter('first_band_freq', 75.0, 'float', minimum=50.0, maximum=100.0))
+        vocal_eq_params.add(Parameter('first_band_q', 5.0, 'float', minimum=1.5, maximum=10.0))
+        vocal_eq_params.add(Parameter('second_band_gain', 1.0, 'float', minimum=-1.0, maximum=2.0))
+        vocal_eq_params.add(Parameter('second_band_freq', 150.0, 'float', minimum=100.0, maximum=200.0))
+        vocal_eq_params.add(Parameter('second_band_q', 1.5, 'float', minimum=1.5, maximum=10.0))
+        vocal_eq_params.add(Parameter('third_band_gain', 1.0, 'float', minimum=0.0, maximum=2.0))
+        vocal_eq_params.add(Parameter('third_band_freq', 400.0, 'float', minimum=300.0, maximum=500.0))
+        vocal_eq_params.add(Parameter('third_band_q', 2.0, 'float', minimum=1.5, maximum=10.0))
+        vocal_eq = Equaliser(n_channels=n_channels, sample_rate=sample_rate, bands=['low_shelf', 'first_band', 'second_band', 'third_band'], parameters=vocal_eq_params)
+
+            # COMP
+        vocal_comp_params = ParameterList()
+        vocal_comp_params.add(Parameter('threshold', -20.0, 'float', units='dB', minimum=-40.0, maximum=0.0))
+        vocal_comp_params.add(Parameter('attack_time', 10.0, 'float', units='ms', minimum=1.0, maximum=100.0))
+        vocal_comp_params.add(Parameter('release_time', 100.0, 'float', units='ms', minimum=10.0, maximum=500.0))
+        vocal_comp_params.add(Parameter('ratio', 4.0, 'float', minimum=2.0, maximum=10.0))
+        vocal_comp = Compressor(sample_rate = sample_rate, parameters=vocal_comp_params)
+
+            # PAN    
+        vocal_pan_params = ParameterList()
+        vocal_pan_params.add(Parameter('pan', 0.5, 'float', minimum=0.46, maximum=0.56))
+        vocal_pan_params.add(Parameter('pan_law', '-4.5dB', 'string', options=['-4.5dB', 'linear', 'constant_power']))
+        vocal_pan = Panner(parameters=vocal_pan_params)
+
+            # CHAIN
+        self.vocal_chain = create_effects_augmentation_chain([vocal_gain, vocal_eq, vocal_comp, vocal_pan], ir_dir_path=None, sample_rate=sample_rate)
+
+            # LIMITER
+        self.limiter = Pedalboard([
+            pedalboard_gain(
+                gain_db = 1.0
+            ),
+            Limiter(
+                threshold_db=0.0, 
+                release_ms = 100 
+            )
+        ])
+
+    def update_chains(self, samples):
+        #####################
+        # Individual chains #
+        #####################
+        RMS_range = 0.7
+        RMS_value = RMS_parallel(samples, self.mono)
+        self.vocal_chain.fxs[0][0].parameters.gain.value =  max(
+            self.vocal_chain.fxs[0][0].parameters.gain.min,
+            min(
+                self.vocal_chain.fxs[0][0].parameters.gain.max,
+                self.vocal_chain.fxs[0][0].parameters.gain.max - (RMS_value/RMS_range) * self.vocal_chain.fxs[0][0].parameters.gain.range + random.random()*2 - 1
+                )
+            )
+        self.vocal_chain.fxs[1][0].randomize()  # EQ Randomize
+        self.vocal_chain.fxs[2][0].randomize()  # COMP  Randomize
+        self.vocal_chain.fxs[3][0].randomize()  # PAN  Randomize
+
+
+    def apply(self, vocal):
+        self.update_chains([vocal])
+
+        #####################
+        # Individual chains # (mixing)
+        #####################
+        vocal_modified = self.vocal_chain.__call__([vocal.T])
+
+
+        return vocal_modified
 
 class SSChains():
     def __init__(self, mono:bool, sample_rate):
