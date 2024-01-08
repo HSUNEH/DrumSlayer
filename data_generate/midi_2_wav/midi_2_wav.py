@@ -7,6 +7,7 @@ from scipy import signal
 import torch
 import sys
 from scipy.io.wavfile import write
+import random
 
 current_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(current_dir)
@@ -292,7 +293,7 @@ def midi_2_wav_other_all(args):
         loop_bass = OtherLoop(loop_bass_2sec,loop_bass_4sec,loop_seconds)
 
         loop_vocal = VocalLoop(sample_vocal, loop_seconds)
-
+        
         # Bring the each loop separately
         for idx in tqdm(range(len(loop_kick)), desc=f'midi2wav {data_type} data'): 
             audio_loop_kick, _, _  = loop_kick[idx]
@@ -304,6 +305,16 @@ def midi_2_wav_other_all(args):
             audio_loop_bass = loop_bass['bass']
             audio_loop_vocal = loop_vocal['vocal']
 
+            if random.random() <= 0.2:
+                audio_loop_piano = np.zeros_like(audio_loop_piano)
+            if random.random() <= 0.2:
+                audio_loop_bass =  np.zeros_like(audio_loop_bass)
+            if random.random() <= 0.2:
+                audio_loop_guitar =  np.zeros_like(audio_loop_guitar)
+            if random.random() <= 0.1:
+                audio_loop_vocal =  np.zeros_like(audio_loop_vocal)
+            
+            
             # loop + DAFX => mixed_loop
             mixed_loop = generate_drum_other_fx(audio_loop_kick, audio_loop_snare, audio_loop_hhclosed, audio_loop_piano, audio_loop_guitar, audio_loop_bass, audio_loop_vocal,args)
             
