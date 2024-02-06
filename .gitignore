@@ -14,3 +14,12 @@ data_generate/midi_2_wav/drum_data_practice
 data_generate/midi_2_wav/one_shots
 
 data_generate/generated_data
+generated_data
+ckpts
+DrumTranscriber/__pycache__
+DrumTranscriber/ckpts
+DrumTranscriber/false
+DrumTranscriber/wandb
+
+*.wav
+*.png

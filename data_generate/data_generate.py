@@ -44,5 +44,6 @@ if __name__ == '__main__':
     # -> 1개당 2.7m
     # 1000개 -> 2700m -> 약 2M
     # 1000000개 -> 약 2000M -> 약 2G
-    # python data_generate.py --data_type all --midi_number 10
-    # python data_generate.py --data_type all --oneshot_dir <데이터 저장공간> --output_dir <데이터 저장공간> --midi_number 1000000
+    # python data_generate.py --data_type all --oneshot_dir <데이터 저장공간>/ --output_dir <데이터 저장공간>/ --midi_number 100000
+    # python data_generate/data_generate.py --oneshot_dir /disk2/st_drums/one_shots/ --output_dir /disk2/st_drums/generated_data/ --midi_number 20 
+    # python data_generate/data_generate.py --oneshot_dir /disk2/st_drums/one_shots/ --output_dir generated_data/ --midi_number 20 

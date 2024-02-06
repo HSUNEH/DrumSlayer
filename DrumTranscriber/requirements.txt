@@ -1,0 +1,12 @@
+audiofile==1.2.1
+einops==0.7.0
+lightning==2.1.0
+lightning_bolts==0.7.0
+matplotlib==3.7.1
+numpy==1.23.0
+pretty_midi==0.2.10
+soundfile==0.12.1
+torch==2.1.1
+tqdm==4.64.0
+descript_audio_codec==1.0.0
+
