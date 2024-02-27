@@ -6,7 +6,7 @@ from tqdm import tqdm
 import os
 import argparse
 
-
+import random
 
 def generate_midi(args):
     data_type = args.data_type
@@ -198,13 +198,13 @@ def generate_midi_one(args):
 
     for b in range(3):
         if b == 0:
-            note_number = 4 *loop_seconds        # onset 개수
+            note_number = 4 *loop_seconds + random.randint(-2,1)*loop_seconds       # onset 개수
             midi_name = 'hihat_midi'          # 폴더,파일 이름
         elif b == 1:
-            note_number = loop_seconds
+            note_number = loop_seconds + random.randint(-1,1)*loop_seconds
             midi_name = 'kick_midi'
         elif b == 2 :
-            note_number = loop_seconds
+            note_number = loop_seconds + + random.randint(-1,1)*loop_seconds
             midi_name = 'snare_midi'
 
 

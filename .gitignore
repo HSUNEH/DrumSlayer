@@ -12,5 +12,6 @@ data_generate/midi_2_wav/drum_data_train
 data_generate/midi_2_wav/drum_data_val
 data_generate/midi_2_wav/drum_data_practice
 data_generate/midi_2_wav/one_shots
-
+ckpts
 data_generate/generated_data
+generated_data
