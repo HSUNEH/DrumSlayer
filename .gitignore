@@ -17,3 +17,14 @@ data_generate/generated_data
 generated_data
 DrumTranscriber/__pycache__
 DrumTranscriber/false
+
+data_generate/generated_data
+generated_data
+ckpts
+DrumTranscriber/__pycache__
+DrumTranscriber/ckpts
+DrumTranscriber/false
+DrumTranscriber/wandb
+
+*.wav
+*.png
