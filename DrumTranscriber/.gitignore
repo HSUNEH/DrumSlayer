@@ -1,0 +1,5 @@
+*.wav
+*.png
+lightning_logs/
+DrumSlayer/
+wandb/

@@ -15,3 +15,5 @@ data_generate/midi_2_wav/one_shots
 ckpts
 data_generate/generated_data
 generated_data
+DrumTranscriber/__pycache__
+DrumTranscriber/false
