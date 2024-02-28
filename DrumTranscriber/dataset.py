@@ -27,7 +27,7 @@ class DrumSlayerDataset(Dataset):
         snare_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/snare_midi/snare_midi_{idx}.midi")
         hihat_midi = pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/hihat_midi/hihat_midi_{idx}.midi")
         
-        # TODO : list 읽고 해당 Oneshot 의 dac 파일 불러와서 적용 
+        # TODO : list 읽고 해당 Oneshot 의 dac 파일 불러와서 적용
         # TODO : preprocess 에서 one shot dac 파일 생성
         def load_dac(file_path, idx):
             with open(file_path, 'r') as file:
@@ -105,7 +105,7 @@ class DrumSlayerDataset(Dataset):
                         all_tokens_np[1+i, start: end] = codes+2000    
                     else:
                         all_tokens_np[10+i, start: end] = codes+2000    
-                    
+
         for i in range(3):
             all_tokens_np[:,152+(431+8+1)*i] = 3 # <SEP> token 
 

@@ -45,11 +45,13 @@ class EncoderDecoderModule(pl.LightningModule):
         super().__init__()
         self.config = config
         self.encoder_decoder = EncoderDecoder(config)
-        self.loss_function = self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim+1)]
+        self.loss_function = self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim+1)] ##number
     
     def training_step(self, batch, batch_idx):
         total_loss, midi_loss, audio_losses = self.step(batch)
         self.log("train_total_loss", total_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("train_midi_loss", midi_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("train_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         # self.log("train_padding_loss", padding_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         # self.log("train_content_loss", content_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         return total_loss
@@ -57,6 +59,8 @@ class EncoderDecoderModule(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         total_loss, midi_loss, audio_losses = self.step(batch)
         self.log("train_total_loss", total_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("train_midi_loss", midi_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("train_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         # self.log("train_padding_loss", padding_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         # self.log("train_content_loss", content_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         return total_loss
@@ -67,28 +71,29 @@ class EncoderDecoderModule(pl.LightningModule):
     
     def step(self, batch):
         x, y = batch # x: audio_rep, y: midi_audio_tokens  # x.shape : (4, 431, 2, 9), y.shape : (4, 1472, 19)
+        
         y_pred = self.encoder_decoder(x, y[:,:-1]) # (batch_size, seq_len, total_vocab_size) (4, 2737, 2157)
 
         # TODO : MIDI LOSS
+        midi_target = rearrange(y[:,1:,0], 'b t -> (b t)') #5884 = b*1471
         dac_pred = rearrange(y_pred, 'b t v -> (b t) v') 
-        midi_target = rearrange(y[:,1:,0], 'b t -> (b t)')
-        
-        non_reduced_loss = self.loss_functions[0](dac_pred, midi_target.long()) # CrossEntropyLoss
-        loss_for_padding = non_reduced_loss * (midi_target == 2).float()
-        loss_for_padding = loss_for_padding.sum() / (midi_target == 2).float().sum()
-        loss_for_content = non_reduced_loss * (midi_target != 2).float()
-        loss_for_content = loss_for_content.sum() / (midi_target != 2).float().sum()
 
-        midi_loss = loss_for_content + self.config.padding_loss_lambda * loss_for_padding
+        midi_pred = rearrange(y_pred[:,:,:self.config.midi_vocab_size], 'b s v -> (b s) v')
+        midi_loss = self.loss_functions[0](midi_pred, midi_target.long()) # CrossEntropyLoss
+        # non_reduced_loss = self.loss_functions[0](midi_pred, midi_target.long()) # CrossEntropyLoss
+        # loss_for_padding = non_reduced_loss * (midi_target == 2).float()
+        # loss_for_padding = loss_for_padding.sum() / (midi_target == 2).float().sum()
+        # loss_for_content = non_reduced_loss * (midi_target != 2).float()
+        # loss_for_content = loss_for_content.sum() / (midi_target != 2).float().sum()
+        # midi_loss = loss_for_content + self.config.padding_loss_lambda * loss_for_padding
         
-        # TODO : Audio DAC Loss 
+        # TODO : Audio DAC Loss
         audio_losses = []
-        for i in range(18):
-
+        for i in range(9): ##number
             # y_pred : torch.Size([4, 2737, 2157]) b, t, v
             # y : torch.Size([4, 2738, 19])
             audio_logits = rearrange(y_pred[:,:,self.config.midi_vocab_size+i*self.config.audio_vocab_size:self.config.midi_vocab_size+(i+1)*self.config.audio_vocab_size], 'b s v -> (b s) v') # (4*2737, v)
-            audio_target = rearrange(y[:,:,i+1], 'b s -> (b s)') # 4*2738
+            audio_target = rearrange(y[:,1:,i+1], 'b s -> (b s)') # 4*2738
             audio_losses.append(self.loss_functions[i+1](audio_logits, audio_target))
         total_loss = midi_loss + sum(audio_losses)
         loss = total_loss / 19.0
@@ -114,10 +119,10 @@ class EncoderDecoder(nn.Module):
         self.encoder = Encoder(config)
         self.decoder = Decoder(config)
         self.softmax = nn.Softmax(dim=-1)
-        self.dac_projection_layer = nn.Linear(config.dec_d_model, config.midi_vocab_size + config.audio_vocab_size * 9)
+        self.dac_projection_layer = nn.Linear(config.dec_d_model, config.midi_vocab_size + config.audio_vocab_size * 9) ##number
         self.embedding = nn.Embedding(1024, 1)
         self.midi_embedding_layer = nn.Embedding(config.midi_vocab_size, config.dec_d_model)
-        self.audio_embedding_layer = nn.ModuleList([nn.Embedding(config.audio_vocab_size, config.dec_d_model) for _ in range(18)])
+        self.audio_embedding_layer = nn.ModuleList([nn.Embedding(config.audio_vocab_size, config.dec_d_model) for _ in range(9)]) ##number
 
     def forward(self, x, y=None, strategy="greedy", sample_arg=None):
         # Input
@@ -139,7 +144,7 @@ class EncoderDecoder(nn.Module):
         
         tok_embedding = self.midi_embedding_layer(y[:,:,0]) # torch.Size([4, 1471]) -> torch.Size([4, 1471, 768])
         
-        for i in range(18):
+        for i in range(9): ##number
             # audio_tok_embedding = self.audio_embedding_layer[i](y[:,:,i+1])
             audio_tok_embedding = self.midi_embedding_layer(y[:,:,i+1])
             tok_embedding += audio_tok_embedding # torch.Size([4, 1471, 768]) #TODO: 덧셈이 맞는지 확인 -> 맞다고 하네요. but 다른 방법론도 적용해보자
@@ -300,8 +305,10 @@ class DecoderLayer(nn.Module):
         return x    
 
 
+
+
 if __name__ == "__main__":
-    from encoder_decoder import EncoderDecoderModule, EncoderDecoderConfig    
+    from encoder_decoder_m import EncoderDecoderModule, EncoderDecoderConfig    
     from dataset import DrumSlayerDataset
     from torch.utils.data import DataLoader
     import wandb
@@ -317,7 +324,7 @@ if __name__ == "__main__":
     import glob
 
     
-    BATCH_SIZE = 4
+    BATCH_SIZE = 2
     NUM_WORKERS = 0
     NUM_DEVICES = 0,1,2,3,4
     # # Set the desired CUDA device number
@@ -342,11 +349,11 @@ if __name__ == "__main__":
             self.max_len = max_len
             self.encoding_type = audio_encoding_type
             if self.encoding_type == 'codes':
-                self.size = [19, max_len]
+                self.size = [10, max_len] ##number
         def __getitem__(self, idx):
             # audio_rep = np.load(self.file_path + f"drum_data_{self.split}/mixed_loops/{idx}_{self.encoding_type}.npy") ## npy 생성 -> preprocess_dac.py
             # audio_rep = rearrange(audio_rep, 'c d t -> t c d') # c: channel, d: dim, t: time
-            audio_rep = np.random.randint(0, 1024, (2, 9, 431)) 
+            audio_rep = np.random.randint(0, 1024, (2, 9, 431))
             audio_rep = rearrange(audio_rep, 'c d t -> t c d')
             
             # kick_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/kick_midi/kick_midi_{idx}.midi")
@@ -354,7 +361,7 @@ if __name__ == "__main__":
             # hihat_midi = pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/hihat_midi/hihat_midi_{idx}.midi")
             # midi_tokens = self.tokenize_midi(kick_midi, snare_midi, hihat_midi) # (,152)
             
-            audio_tokens = np.random.randint(0,1024, (self.size)) # (d:19, t:2737) # TODO : stereo d => 19
+            audio_tokens = np.random.randint(0,1024, (self.size)) # (d:10, t:2737) # TODO : stereo d => 19
             audio_tokens = rearrange(audio_tokens, 'd t -> t d') # (2737, 10)
             return audio_rep, audio_tokens # midi_tokens
 
@@ -395,8 +402,8 @@ if __name__ == "__main__":
             logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
             trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed',)
         
-        trainer.fit(model=model, train_dataloaders=train_dataloader) #, val_dataloaders=valid_dataloader)
+        trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader)
     # import os
-    # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
     # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
     main()
