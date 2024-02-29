@@ -15,7 +15,7 @@ import audiofile as af
 import torch
 
 BATCH_SIZE = 16
-NUM_WORKERS = 2
+NUM_WORKERS = 1
 
 # # Set the desired CUDA device number
 # torch.cuda.set_device(1)
@@ -64,7 +64,7 @@ class DrumLoopDataset(Dataset):
     def __init__(self, file_path, split):
         assert split in ["train", "valid", "test"]
         self.file_path = file_path
-        self.fnames = sorted(glob.glob(file_path + f"/drum_data_{split}/mixed_loops/*.wav"))
+        self.fnames = sorted(glob.glob(file_path + f"generated_data/drum_data_{split}/mixed_loops/*.wav"))
         print(len(self.fnames))
     
     def __getitem__(self, idx):
@@ -75,17 +75,33 @@ class DrumLoopDataset(Dataset):
     def __len__(self):
         return len(self.fnames)
 
+class OneshotDataset(Dataset):
+    def __init__(self, file_path, split,inst):
+        assert split in ["train", "valid", "test"]
+        self.file_path = file_path
+        self.fnames = sorted(glob.glob(file_path + f"one_shots/{split}/{inst}/*.wav"))
+
+    
+    def __getitem__(self, idx):
+        # Use the fastest loading and resampling method
+        wav, sr = af.read(self.fnames[idx])
+        print(wav, self.fnames[idx])
+        return wav, self.fnames[idx]
+    
+    def __len__(self):
+        return len(self.fnames)
+
 
 def main():
     # path = '/workspace/DrumSlayer/generated_data/'
-    path = '/disk2/st_drums/generated_data/'
+    path = '/disk2/st_drums/'
     
     model_path = dac.utils.download(model_type="44khz")
     model = dac.DAC.load(model_path)    
     
-    device_ids = [7]
+    device_ids = [0]
     gpu_setting(device_ids)
-    
+
     train_dataset = DrumLoopDataset(path, "train")
     valid_dataset = DrumLoopDataset(path, "valid")
     test_dataset = DrumLoopDataset(path, "test")
@@ -99,8 +115,7 @@ def main():
 
     for loader in [train_dataloader, valid_dataloader, test_dataloader]:
         for wav, fname in tqdm(loader):
-            
-            wav = wav.reshape([-1,1,220500]).cuda() # Merge batch and channel. (torch.Size [32, 1, 220500]-> [16, 2, 220500])
+            wav = wav.reshape([-1,1,220500]).cuda() # Merge batch and channel. (torch.Size [16, 2, 220500]->[32, 1, 220500])
             with torch.no_grad(): # dim ["latents" 72, "codes" 9 , "z" 1024] 
                 x = model.preprocess(wav, 44100)
                 z, codes, latents,_ ,_ = model.encode(x)

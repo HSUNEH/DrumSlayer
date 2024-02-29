@@ -23,13 +23,13 @@ class EncoderDecoderConfig:
         self.dec_d_ff = 3072
         # Dropout hparams.
         self.embed_dropout = 0.1
-        self.attn_dropout = 0.1 
+        self.attn_dropout = 0.1
         self.ff_dropout = 0.1
         # Other hparams.
-        self.midi_vocab_size = 1000+128+4+1 ## <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types.
+        self.midi_vocab_size = 1000+128+4+3 ## <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types. 1134
         self.audio_vocab_size = 1024 +4 +1 # 1024 dac tokens + <start>,<end>,<pad>,<sep>
         # self.dac_vocab_size = 4+1000+128+1025 # 2157 # <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types. + 1025 dac tokens
-        # self.audio_rep = "latents" # "latents", "codes", "z
+        # self.audio_rep = "latents" # "latents", "codes", "z"
         self.audio_rep = audio_rep
         if self.audio_rep == "latents":
             self.audio_rep_dim = 72
@@ -57,6 +57,7 @@ class EncoderDecoderModule(pl.LightningModule):
         return total_loss
     
     def validation_step(self, batch, batch_idx):
+
         total_loss, midi_loss, audio_losses = self.step(batch)
         self.log("train_total_loss", total_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("train_midi_loss", midi_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
@@ -70,9 +71,9 @@ class EncoderDecoderModule(pl.LightningModule):
         return self.optimizer
     
     def step(self, batch):
-        x, y = batch # x: audio_rep, y: midi_audio_tokens  # x.shape : (4, 431, 2, 9), y.shape : (4, 1472, 19)
-        
-        y_pred = self.encoder_decoder(x, y[:,:-1]) # (batch_size, seq_len, total_vocab_size) (4, 2737, 2157)
+        x, y = batch # x: audio_rep, y: midi_audio_tokens  # x.shape : (4, 431, 2, 9), y.shape : (4, 10, 1472)
+        y = rearrange(y, 'b v t -> b t v') # (4, 1472, 10)
+        y_pred = self.encoder_decoder(x, y[:,:-1]) # (batch_size, seq_len, total_vocab_size) torch.Size([4, 1471, 10396])
 
         # TODO : MIDI LOSS
         midi_target = rearrange(y[:,1:,0], 'b t -> (b t)') #5884 = b*1471
@@ -80,25 +81,21 @@ class EncoderDecoderModule(pl.LightningModule):
 
         midi_pred = rearrange(y_pred[:,:,:self.config.midi_vocab_size], 'b s v -> (b s) v')
         midi_loss = self.loss_functions[0](midi_pred, midi_target.long()) # CrossEntropyLoss
-        # non_reduced_loss = self.loss_functions[0](midi_pred, midi_target.long()) # CrossEntropyLoss
-        # loss_for_padding = non_reduced_loss * (midi_target == 2).float()
-        # loss_for_padding = loss_for_padding.sum() / (midi_target == 2).float().sum()
-        # loss_for_content = non_reduced_loss * (midi_target != 2).float()
-        # loss_for_content = loss_for_content.sum() / (midi_target != 2).float().sum()
-        # midi_loss = loss_for_content + self.config.padding_loss_lambda * loss_for_padding
-        
+
         # TODO : Audio DAC Loss
         audio_losses = []
         for i in range(9): ##number
             # y_pred : torch.Size([4, 2737, 2157]) b, t, v
             # y : torch.Size([4, 2738, 19])
             audio_logits = rearrange(y_pred[:,:,self.config.midi_vocab_size+i*self.config.audio_vocab_size:self.config.midi_vocab_size+(i+1)*self.config.audio_vocab_size], 'b s v -> (b s) v') # (4*2737, v)
-            audio_target = rearrange(y[:,1:,i+1], 'b s -> (b s)') # 4*2738
+            audio_target = rearrange(y[:,1:,i+1], 'b s -> (b s)').long() # 4*2738
+            
             audio_losses.append(self.loss_functions[i+1](audio_logits, audio_target))
         total_loss = midi_loss + sum(audio_losses)
-        loss = total_loss / 19.0
+        loss = total_loss / 10.0 ##number
 
-        return loss, midi_loss, sum(audio_losses)/18.0
+        return loss, midi_loss, sum(audio_losses)/9.0 ##number
+
 
 class EncoderDecoder(nn.Module):
     def __init__(self, config):
@@ -120,16 +117,17 @@ class EncoderDecoder(nn.Module):
         self.decoder = Decoder(config)
         self.softmax = nn.Softmax(dim=-1)
         self.dac_projection_layer = nn.Linear(config.dec_d_model, config.midi_vocab_size + config.audio_vocab_size * 9) ##number
-        self.embedding = nn.Embedding(1024, 1)
+        self.embedding = nn.Embedding(1025, 1)
         self.midi_embedding_layer = nn.Embedding(config.midi_vocab_size, config.dec_d_model)
         self.audio_embedding_layer = nn.ModuleList([nn.Embedding(config.audio_vocab_size, config.dec_d_model) for _ in range(9)]) ##number
 
     def forward(self, x, y=None, strategy="greedy", sample_arg=None):
         # Input
         # x: [batch_size, seq_len, 2, audio_rep_dim:9] 2 for stereo.        torch.Size([4, 431, 2, 9])  audio_rep
-        # y: [batch_size, seq_len, 19]                                      torch.Size([4, 1471, 19])   target_midi_audio_token
+        # y: [batch_size, seq_len, 10]                                      torch.Size([4, 1471, 10])   target_midi_audio_token
         # Output
-
+        
+        x = x.long()
         if self.config.audio_rep == "codes":
             x = self.embedding(x).squeeze(-1) # [batch_size, seq_len, 2, dac_dim(9)] -> [batch_size, seq_len, 2, dac_dim(9)]
         x_emb = self.audio_projection_layer(x) # [batch_size, seq_len, 2, dac_dim(9)] -> [batch_size, seq_len, 2, d_model(768)]
@@ -141,7 +139,7 @@ class EncoderDecoder(nn.Module):
         #     print("y_target이 없는디요")
         #     return self.generate(enc_output, strategy=strategy, sample_arg=sample_arg)
         # else:
-        
+
         tok_embedding = self.midi_embedding_layer(y[:,:,0]) # torch.Size([4, 1471]) -> torch.Size([4, 1471, 768])
         
         for i in range(9): ##number

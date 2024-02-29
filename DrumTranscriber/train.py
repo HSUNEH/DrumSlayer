@@ -1,4 +1,4 @@
-from encoder_decoder import EncoderDecoderModule, EncoderDecoderConfig    
+from encoder_decoder_m import EncoderDecoderModule, EncoderDecoderConfig    
 from dataset import DrumSlayerDataset
 from torch.utils.data import DataLoader
 import wandb
@@ -9,9 +9,9 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.loggers import TensorBoardLogger
 import torch
 
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 NUM_WORKERS = 0
-NUM_DEVICES = 0,1,2,3,4,5,6,7
+NUM_DEVICES = 0,1,2,3,4
 # # Set the desired CUDA device number
 # torch.cuda.set_device(7)
 # device_number = torch.cuda.current_device()
@@ -20,16 +20,16 @@ NUM_DEVICES = 0,1,2,3,4,5,6,7
 EXP_NAME = f"{datetime.datetime.now().strftime('%Y-%m-%d-%H')}-lucky-seven"
 
 RESUME = False
-WANDB = True
-audio_encoding_type = "latents" # "latents", "codes", "z" (dim: 72, 9, 1024)
+WANDB = False
+audio_encoding_type = "codes" # "latents", "codes", "z" (dim: 72, 9, 1024)
 
 # data_dir = '/workspace/DrumSlayer/generated_data/'
 data_dir = '/disk2/st_drums/generated_data/'
 trained_dir = '/workspace/DrumTranscriber/ckpts'
 
 def main():
-    os.makedirs(f"{trained_dir}/{EXP_NAME}/", exist_ok=True)    
-    wandb.init(project="DrumTranscriber", name=EXP_NAME)
+    os.makedirs(f"{trained_dir}/{EXP_NAME}/", exist_ok=True)
+    # wandb.init(project="DrumTranscriber", name=EXP_NAME)
     
     train_dataset = DrumSlayerDataset(data_dir, "train", audio_encoding_type)
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
@@ -55,7 +55,7 @@ def main():
         # dirpath=f"/data5/kyungsu/ckpts/DrumSlayer/{EXP_NAME}/",
         monitor="train_content_loss",
         mode = "min",
-        every_n_steps=100,
+        # every_n_steps=100,
         filename = "{epoch}-{train_content_loss:.2f}",
         verbose=True,
         save_top_k=3,
@@ -68,7 +68,6 @@ def main():
         logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
         trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', callbacks=[checkpoint_callback])
 
-        
 
     trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader)
 
