@@ -39,6 +39,7 @@ def main():
     config = EncoderDecoderConfig(audio_rep = audio_encoding_type)
 
     model = EncoderDecoderModule(config)
+    ddp_strategy = pl.strategies.DDPStrategy(find_unused_parameters=True)
 
     # checkpoint_callback = pl.callbacks.ModelCheckpoint(
     #     dirpath=f"{trained_dir}/{EXP_NAME}/",
@@ -63,10 +64,10 @@ def main():
     )
     if WANDB:
         logger = WandbLogger(name=EXP_NAME, project="DrumSlayer")
-        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', callbacks=[checkpoint_callback])
+        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', callbacks=[checkpoint_callback], strategy=ddp_strategy)
     else:
         logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
-        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', callbacks=[checkpoint_callback])
+        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', callbacks=[checkpoint_callback], strategy=ddp_strategy)
 
 
     trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader)

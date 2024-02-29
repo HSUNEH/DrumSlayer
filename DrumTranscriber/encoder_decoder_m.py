@@ -12,15 +12,15 @@ from einops import rearrange
 class EncoderDecoderConfig:
     def __init__(self, audio_rep, **kwargs):
         # Encoder hparams.
-        self.enc_num_layers = 10
-        self.enc_num_heads = 12
-        self.enc_d_model = 768
-        self.enc_d_ff = 3072
+        self.enc_num_layers = 10/2
+        self.enc_num_heads = 12/2
+        self.enc_d_model = 768/2
+        self.enc_d_ff = 3072/2
         # Decoder hparams.
-        self.dec_num_layers = 10
-        self.dec_num_heads = 12
-        self.dec_d_model = 768
-        self.dec_d_ff = 3072
+        self.dec_num_layers = 10/2
+        self.dec_num_heads = 12/2
+        self.dec_d_model = 768/2
+        self.dec_d_ff = 3072/2
         # Dropout hparams.
         self.embed_dropout = 0.1
         self.attn_dropout = 0.1
@@ -37,7 +37,7 @@ class EncoderDecoderConfig:
             self.audio_rep_dim = 1024
         elif self.audio_rep == "codes":
             self.audio_rep_dim = 9
-        self.max_target_len = 2737
+        self.max_target_len = 1472
         self.padding_loss_lambda = 0.1
 
 class EncoderDecoderModule(pl.LightningModule):
