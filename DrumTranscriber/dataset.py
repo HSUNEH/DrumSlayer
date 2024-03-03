@@ -89,7 +89,8 @@ class DrumSlayerDataset(Dataset):
             for note in midi.instruments[0].notes:
                 onset = int(note.start // 0.005) # Time resolution is 5ms
                 vel = int(note.velocity)
-                midi_tokens.append([4+onset, 4+1000+vel, 4+1000+128+type]) # 2 is reserved for start and end tokens.
+                if onset <800: # 4sec
+                    midi_tokens.append([4+onset, 4+1000+vel, 4+1000+128+type]) # 2 is reserved for start and end tokens.
         midi_tokens.sort(key=lambda x: x[0]) # Sort by onset time.
         midi_tokens = [item for sublist in midi_tokens for item in sublist] # Flatten.
         all_tokens_np = np.ones((1+(kick_dac_l.shape[0]),152+(431+8+1)*3), dtype=np.int32) * 2   # <PAD> token = 2 
@@ -99,7 +100,7 @@ class DrumSlayerDataset(Dataset):
         
         # interleaving pattern
         for type, dac  in enumerate([kick_dac_l, snare_dac_l, hihat_dac_l]):# with latents
-            for i, codes in enumerate(dac): # dac : (9, 431)
+            for i, codes in enumerate(dac): # dac : (9, (max)431)
                 start = i+153+type*(431+8+1)
                 end = start + dac.shape[1] 
                 all_tokens_np[1+i, start: end] = codes # +2000
@@ -120,7 +121,8 @@ class DrumSlayerDataset(Dataset):
             for note in midi.instruments[0].notes:
                 onset = int(note.start // 0.005) # Time resolution is 5ms
                 vel = int(note.velocity)
-                midi_tokens.append([4+onset, 4+1000+vel, 4+1000+128+type]) # 2 is reserved for start and end tokens.
+                if onset <800: # 4sec
+                    midi_tokens.append([4+onset, 4+1000+vel, 4+1000+128+type]) # 2 is reserved for start and end tokens.
         midi_tokens.sort(key=lambda x: x[0]) # Sort by onset time.
         midi_tokens = [item for sublist in midi_tokens for item in sublist] # Flatten.
         all_tokens_np = np.ones((1+(kick_dac_l.shape[0])*2,152+(431+8+1)*3), dtype=np.int32) * 2   # <PAD> token = 2 

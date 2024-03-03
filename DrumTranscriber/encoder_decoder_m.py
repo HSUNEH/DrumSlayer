@@ -71,7 +71,7 @@ class EncoderDecoderModule(pl.LightningModule):
         return self.optimizer
     
     def step(self, batch):
-        x, y = batch # x: audio_rep, y: midi_audio_tokens  # x.shape : (4, 431, 2, 9), y.shape : (4, 10, 1472)
+        x, y = batch # x: audio_rep, y: midi_audio_tokens  # x.shape : (4, TODO(431) , 2, 9), y.shape : (4, 10, 1472) 
         y = rearrange(y, 'b v t -> b t v') # (4, 1472, 10)
         y_pred = self.encoder_decoder(x, y[:,:-1]) # (batch_size, seq_len, total_vocab_size) torch.Size([4, 1471, 10396])
 
@@ -123,7 +123,7 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, x, y=None, strategy="greedy", sample_arg=None):
         # Input
-        # x: [batch_size, seq_len, 2, audio_rep_dim:9] 2 for stereo.        torch.Size([4, 431, 2, 9])  audio_rep
+        # x: [batch_size, seq_len, 2, audio_rep_dim:9] 2 for stereo.        torch.Size([4, TODO(431), 2, 9])  audio_rep
         # y: [batch_size, seq_len, 10]                                      torch.Size([4, 1471, 10])   target_midi_audio_token
         # Output
         
@@ -134,7 +134,7 @@ class EncoderDecoder(nn.Module):
         x_emb_l = self.positional_encoder(x_emb[:,:,0]) # left : [batch_size, seq_len, d_model] -> [batch_size, seq_len, d_model]
         x_emb_r = self.positional_encoder(x_emb[:,:,1]) # right : [batch_size, seq_len, d_model]
         x_emb = torch.cat([x_emb_l, x_emb_r], dim=1) # [batch_size, 2*seq_len, d_model], Concatenate stereo channels. 
-        enc_output = self.encoder(x_emb) # [batch_size, seq_len, d_model]:  [4, 862, 768] #TODO : concat 이 맘에 안들면 Parallel로 바꿔보기
+        enc_output = self.encoder(x_emb) # [batch_size, seq_len, d_model]:  [4, TODO(2*431), 768] #TODO : concat 이 맘에 안들면 Parallel로 바꿔보기
         # if y is None:
         #     print("y_target이 없는디요")
         #     return self.generate(enc_output, strategy=strategy, sample_arg=sample_arg)

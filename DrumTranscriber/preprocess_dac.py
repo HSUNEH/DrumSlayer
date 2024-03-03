@@ -14,7 +14,7 @@ from audiotools import AudioSignal
 import audiofile as af
 import torch
 
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 NUM_WORKERS = 1
 
 # # Set the desired CUDA device number
@@ -94,13 +94,14 @@ class OneshotDataset(Dataset):
 
 def main():
     # path = '/workspace/DrumSlayer/generated_data/'
-    path = '/disk2/st_drums/'
+    # path = '/disk2/st_drums/'
+    path = '/Users/hwang/DrumSlayer/'
     
     model_path = dac.utils.download(model_type="44khz")
     model = dac.DAC.load(model_path)    
     
-    device_ids = [0]
-    gpu_setting(device_ids)
+    # device_ids = [0]
+    # gpu_setting(device_ids)
 
     train_dataset = DrumLoopDataset(path, "train")
     valid_dataset = DrumLoopDataset(path, "valid")
@@ -111,11 +112,12 @@ def main():
     test_dataloader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, drop_last=False)
 
 
-    model = model.cuda()
+    # model = model.cuda()
 
     for loader in [train_dataloader, valid_dataloader, test_dataloader]:
         for wav, fname in tqdm(loader):
-            wav = wav.reshape([-1,1,220500]).cuda() # Merge batch and channel. (torch.Size [16, 2, 220500]->[32, 1, 220500])
+            wav = wav[:,:,:176400] # 5sec to 4sec
+            wav = wav.reshape([-1,1,176400])#.cuda() # Merge batch and channel. (torch.Size [16, 2, 220500]->[32, 1, 220500])
             with torch.no_grad(): # dim ["latents" 72, "codes" 9 , "z" 1024] 
                 x = model.preprocess(wav, 44100)
                 z, codes, latents,_ ,_ = model.encode(x)
@@ -125,7 +127,7 @@ def main():
                 
             for i, fname in enumerate(fname):
                 # numpy.save(fname.replace(".wav", "_z.npy"), z_np[2*i:2*(i+1)]) 
-                numpy.save(fname.replace(".wav", "_codes.npy"), codes_16bit[2*i:2*(i+1)]) # shape : (2,9,431) -> stereo, 9 audio_rep_dim, 431 seq_len
+                numpy.save(fname.replace(".wav", "_codes.npy"), codes_16bit[2*i:2*(i+1)]) # shape : (2,9,TODO(431)) -> stereo, 9 audio_rep_dim, 431 seq_len
                 # numpy.save(fname.replace(".wav", "_latents.npy"), latents_np[2*i:2*(i+1)])
 
 
