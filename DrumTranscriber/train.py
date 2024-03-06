@@ -1,4 +1,4 @@
-from encoder_decoder_m import EncoderDecoderModule, EncoderDecoderConfig    
+from encoder_decoder_inst import EncoderDecoderModule, EncoderDecoderConfig    
 from dataset import DrumSlayerDataset
 from torch.utils.data import DataLoader
 import wandb
@@ -8,10 +8,11 @@ import datetime
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.loggers import TensorBoardLogger
 import torch
+import argparse
 
 BATCH_SIZE = 4
 NUM_WORKERS = 0
-NUM_DEVICES = 0,1,2,3
+NUM_DEVICES = 4,5,6,7
 # # Set the desired CUDA device number
 # torch.cuda.set_device(7)
 # device_number = torch.cuda.current_device()
@@ -27,16 +28,16 @@ audio_encoding_type = "codes" # "latents", "codes", "z" (dim: 72, 9, 1024)
 data_dir = '/disk2/st_drums/generated_data/'
 trained_dir = '/workspace/DrumTranscriber/ckpts'
 
-def main():
+def main(args):
     os.makedirs(f"{trained_dir}/{EXP_NAME}/", exist_ok=True)
     # wandb.init(project="DrumTranscriber", name=EXP_NAME)
     
-    train_dataset = DrumSlayerDataset(data_dir, "train", audio_encoding_type)
+    train_dataset = DrumSlayerDataset(data_dir, "train", audio_encoding_type, args)
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-    valid_dataset = DrumSlayerDataset(data_dir, "valid", audio_encoding_type)
+    valid_dataset = DrumSlayerDataset(data_dir, "valid", audio_encoding_type, args)
     valid_dataloader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
-    config = EncoderDecoderConfig(audio_rep = audio_encoding_type)
+    config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
 
     model = EncoderDecoderModule(config)
     ddp_strategy = pl.strategies.DDPStrategy(find_unused_parameters=True)
@@ -67,7 +68,8 @@ def main():
         monitor="train_total_loss",
         mode="min",
         dirpath=f"{trained_dir}/{EXP_NAME}/",
-        filename = "{epoch}-{valid_total_loss:.2f}",
+        filename = "{epoch}-{train_total_loss:.2f}",
+        every_n_train_steps=5000, # n_steps
     )
     if WANDB:
         logger = WandbLogger(name=EXP_NAME, project="DrumSlayer")
@@ -103,5 +105,9 @@ def main():
     # trainer.fit(model=model, train_dataloaders=train_dataloader)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--train_type', type=str, default='mono', help='ksh, kshm, kick, snare, hihat')
+    args = parser.parse_args()
+
+    main(args)
     
