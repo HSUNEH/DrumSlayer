@@ -10,5 +10,5 @@ import pretty_midi
 
 a = torch.ones(4,2,220500)
 a = a[:,:,:176400]
-print(a.shape)
+print(12//2)
 

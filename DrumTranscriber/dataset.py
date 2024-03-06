@@ -41,26 +41,27 @@ class DrumSlayerDataset(Dataset):
         kick_name = kick_name.replace('.wav', f'_{self.encoding_type}.npy')
         kick_dac = np.load(oneshot_path + f"{self.split}/kick/{kick_name}") #snare, hhclosed # (2,9,431)
         kick_dac_l = kick_dac[0] # (9, 431)
-        kick_dac_r = kick_dac[1] # (9, 431)
+        # kick_dac_r = kick_dac[1] # (9, 431)
         
         snare_name = load_dac(self.file_path + f"drum_data_{self.split}/snareShotList.txt", idx)
         snare_name = snare_name.replace('.wav', f'_{self.encoding_type}.npy')
         snare_dac = np.load(oneshot_path + f"{self.split}/snare/{snare_name}") 
         snare_dac_l = snare_dac[0] # (9, 431)
-        snare_dac_r = snare_dac[1] # (9, 431)
+        # snare_dac_r = snare_dac[1] # (9, 431)
 
         hihat_name = load_dac(self.file_path + f"drum_data_{self.split}/hihatShotList.txt", idx)
         hihat_name = hihat_name.replace('.wav', f'_{self.encoding_type}.npy')
         hihat_dac = np.load(oneshot_path + f"{self.split}/hhclosed/{hihat_name}")
         hihat_dac_l = hihat_dac[0] # (9, 431)
-        hihat_dac_r = hihat_dac[1] # (9, 431)
+        # hihat_dac_r = hihat_dac[1] # (9, 431)
 
-        audio_tokens = self.tokenize_audio_mono(kick_midi, snare_midi, hihat_midi, kick_dac_l, snare_dac_l, hihat_dac_l)
+        audio_tokens = self.tokenize_audio(kick_dac_l, snare_dac_l, hihat_dac_l)
+        # audio_tokens = self.tokenize_audio_mono(kick_midi, snare_midi, hihat_midi, kick_dac_l, snare_dac_l, hihat_dac_l)
         # audio_tokens = self.tokenize_audio_stereo(kick_midi, snare_midi, hihat_midi, kick_dac_l, kick_dac_r, snare_dac_l, snare_dac_r, hihat_dac_l, hihat_dac_r)
         
         # midi_tokens = self.tokenize_midi(kick_midi, snare_midi, hihat_midi)
         # return audio_rep, midi_tokens
-        return audio_rep, audio_tokens 
+        return audio_rep, audio_tokens
 
     def __len__(self):
         return self.num_data
@@ -89,11 +90,11 @@ class DrumSlayerDataset(Dataset):
             for note in midi.instruments[0].notes:
                 onset = int(note.start // 0.005) # Time resolution is 5ms
                 vel = int(note.velocity)
-                if onset <800: # 4sec
+                if onset <800: # 4sec slice 
                     midi_tokens.append([4+onset, 4+1000+vel, 4+1000+128+type]) # 2 is reserved for start and end tokens.
         midi_tokens.sort(key=lambda x: x[0]) # Sort by onset time.
         midi_tokens = [item for sublist in midi_tokens for item in sublist] # Flatten.
-        all_tokens_np = np.ones((1+(kick_dac_l.shape[0]),152+(431+8+1)*3), dtype=np.int32) * 2   # <PAD> token = 2 
+        all_tokens_np = np.ones((1+(kick_dac_l.shape[0]),92+1+(345+8+1)*3), dtype=np.int32) * 2   # <PAD> token = 2 
         
         all_tokens_np[0,1:len(midi_tokens)+1] = np.array(midi_tokens, dtype=np.int32)
         all_tokens_np[:,0] = 0 # <SOS> token
@@ -101,51 +102,39 @@ class DrumSlayerDataset(Dataset):
         # interleaving pattern
         for type, dac  in enumerate([kick_dac_l, snare_dac_l, hihat_dac_l]):# with latents
             for i, codes in enumerate(dac): # dac : (9, (max)431)
-                start = i+153+type*(431+8+1)
+                start = i+93+type*(345+8+1)
                 end = start + dac.shape[1] 
-                all_tokens_np[1+i, start: end] = codes # +2000
+                all_tokens_np[1+i, start: end] = codes + 4 # +2000
         
         for i in range(3):
-            all_tokens_np[:,152+(431+8+1)*i] = 3 # <SEP> token 
+            all_tokens_np[:,92+(345+8+1)*i] = 3 # <SEP> token 
 
         all_tokens_np[:,-1] = 1 # <EOS> token
 
-        return all_tokens_np # (10, 1472) # sep, eos at 152, 592, 1032, 1472
-    
-    def tokenize_audio_stereo(self, kick_midi, snare_midi, hihat_midi, kick_dac_l, kick_dac_r, snare_dac_l, snare_dac_r, hihat_dac_l, hihat_dac_r):
-        midi_vocab_size = 1000+128+4+1 # 1133
-        audio_vocal_size = 1024 + 1 # 1025
+        return all_tokens_np # (10, 1155) # sep, eos at 152, 592, 1032, 1472
 
-        midi_tokens = []
-        for type, midi in enumerate([kick_midi, snare_midi, hihat_midi]):
-            for note in midi.instruments[0].notes:
-                onset = int(note.start // 0.005) # Time resolution is 5ms
-                vel = int(note.velocity)
-                if onset <800: # 4sec
-                    midi_tokens.append([4+onset, 4+1000+vel, 4+1000+128+type]) # 2 is reserved for start and end tokens.
-        midi_tokens.sort(key=lambda x: x[0]) # Sort by onset time.
-        midi_tokens = [item for sublist in midi_tokens for item in sublist] # Flatten.
-        all_tokens_np = np.ones((1+(kick_dac_l.shape[0])*2,152+(431+8+1)*3), dtype=np.int32) * 2   # <PAD> token = 2 
+    def tokenize_audio(self, kick_dac_l, snare_dac_l, hihat_dac_l):
+        midi_vocab_size = 1000+128+4+1 # 1133
+        audio_vocab_size = 1024+4+1 # 1029
+
+        all_tokens_np = np.ones(((kick_dac_l.shape[0]),1+(345+8+1)*3), dtype=np.int32) * 2   # <PAD> token = 2 
         
-        all_tokens_np[0,1:len(midi_tokens)+1] = np.array(midi_tokens, dtype=np.int32) 
+        # all_tokens_np[0,1:len(midi_tokens)+1] = np.array(midi_tokens, dtype=np.int32)
         all_tokens_np[:,0] = 0 # <SOS> token
         
-        # TODO : interleaving pattern
-        for type, dac_list  in enumerate([[kick_dac_l, kick_dac_r], [snare_dac_l, snare_dac_r], [hihat_dac_l, hihat_dac_r]]):# with latents
-            for lr, dac in enumerate(dac_list):
-                for i, codes in enumerate(dac): # dac : (9, 431)
-                    start = i+153+type*(431+8+1)
-                    end = start + dac.shape[1] 
-                    if lr == 0:
-                        all_tokens_np[1+i, start: end] = codes# +2000
-                    else:
-                        all_tokens_np[10+i, start: end] = codes# +2000
+        # interleaving pattern
+        for type, dac  in enumerate([kick_dac_l,snare_dac_l,hihat_dac_l]):# with latents
+            for i, codes in enumerate(dac): # dac : (9, (max)431)
+                start = i+1+type*(345+8+1)
+                end = start + dac.shape[1]
+                all_tokens_np[i, start: end] = codes + 4 # +2000
+        
         for i in range(3):
-            all_tokens_np[:,152+(431+8+1)*i] = 3 # <SEP> token 
+            all_tokens_np[:,(345+8+1)*i] = 3 # <SEP> token 
 
         all_tokens_np[:,-1] = 1 # <EOS> token
 
-        return all_tokens_np # (19, 1472) # sep, eos at 152, 592, 1032, 1472
+        return all_tokens_np # (9, 1063) # sep, eos at 152, 592, 1032, 1472
 
 if __name__ == "__main__":
     data_dir = '/workspace/DrumSlayer/generated_data/'

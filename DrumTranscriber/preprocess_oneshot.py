@@ -106,14 +106,17 @@ def main():
             for idx in tqdm(range(len(inst_list))):
                 inst_name = inst_list[idx]
                 wav, sr = af.read(inst_name)
-                print(wav.shape,sr)
                 if wav.shape[0] == 2:
                     # continue
                     wav = wav.reshape([-1,1,wav.shape[1]]) # Merge batch and channel. (torch.Size [16, 2, 220500]->[32, 1, 220500])
+                    if wav.shape[2] > 176400:
+                        wav = wav[:,:,:176400]
                 else: 
                     # concat wav and wav (wav.shape[1]) -> (2, wav.shape[1])
-                    wav = wav.reshape([1,1,wav.shape[0]]) # Merge batch and channel. (torch.Size [16, 2, 220500]->[32, 1, 220500])
-                    wav = np.concatenate((wav, wav), axis=0)
+                    wav = wav.reshape([1,1,wav.shape[0]]) # Merge batch and channel. (torch.Size [16, 1, 220500]->[16, 1, 220500])
+                    if wav.shape[2] > 176400:
+                        wav = wav[:,:,:176400]
+                    wav = np.concatenate((wav, wav), axis=0) # (torch.Size [16, 1, 220500]->[32, 1, 220500])
 
 
                 wav = torch.from_numpy(wav)

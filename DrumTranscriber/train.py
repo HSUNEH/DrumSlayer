@@ -9,15 +9,15 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.loggers import TensorBoardLogger
 import torch
 
-BATCH_SIZE = 2
+BATCH_SIZE = 4
 NUM_WORKERS = 0
-NUM_DEVICES = 0,1,2,3,4
+NUM_DEVICES = 0,1,2,3
 # # Set the desired CUDA device number
 # torch.cuda.set_device(7)
 # device_number = torch.cuda.current_device()
 # print(f"CUDA device number: {device_number}")
 
-EXP_NAME = f"{datetime.datetime.now().strftime('%Y-%m-%d-%H')}-lucky-seven"
+EXP_NAME = f"{datetime.datetime.now().strftime('%Y-%m-%d-%H')}-HSUNEH-DT"
 
 RESUME = False
 WANDB = False
@@ -51,16 +51,23 @@ def main():
     #     save_top_k=3,
     #     save_last=False,
     # )
+    # checkpoint_callback = pl.callbacks.ModelCheckpoint(
+    #     dirpath=f"{trained_dir}/{EXP_NAME}/",
+    #     # dirpath=f"/data5/kyungsu/ckpts/DrumSlayer/{EXP_NAME}/",
+    #     monitor="valid_total_loss",
+    #     mode = "min",
+    #     # every_n_steps=100,
+    #     filename = "{epoch}-{valid_total_loss:.2f}",
+    #     verbose=True,
+    #     save_top_k=3,
+    #     save_last=False,
+    # )
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        save_top_k=10,
+        monitor="train_total_loss",
+        mode="min",
         dirpath=f"{trained_dir}/{EXP_NAME}/",
-        # dirpath=f"/data5/kyungsu/ckpts/DrumSlayer/{EXP_NAME}/",
-        monitor="train_content_loss",
-        mode = "min",
-        # every_n_steps=100,
-        filename = "{epoch}-{train_content_loss:.2f}",
-        verbose=True,
-        save_top_k=3,
-        save_last=False,
+        filename = "{epoch}-{valid_total_loss:.2f}",
     )
     if WANDB:
         logger = WandbLogger(name=EXP_NAME, project="DrumSlayer")
