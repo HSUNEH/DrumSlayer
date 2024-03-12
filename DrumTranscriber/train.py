@@ -10,18 +10,18 @@ from lightning.pytorch.loggers import TensorBoardLogger
 import torch
 import argparse
 
-BATCH_SIZE = 4
-NUM_WORKERS = 0
 NUM_DEVICES = 4,5,6,7
+NUM_WORKERS = 0
+
 # # Set the desired CUDA device number
 # torch.cuda.set_device(7)
 # device_number = torch.cuda.current_device()
 # print(f"CUDA device number: {device_number}")
 
-EXP_NAME = f"{datetime.datetime.now().strftime('%Y-%m-%d-%H')}-HSUNEH-DT"
+
 
 RESUME = False
-WANDB = False
+
 audio_encoding_type = "codes" # "latents", "codes", "z" (dim: 72, 9, 1024)
 
 # data_dir = '/workspace/DrumSlayer/generated_data/'
@@ -29,9 +29,17 @@ data_dir = '/disk2/st_drums/generated_data/'
 trained_dir = '/workspace/DrumTranscriber/ckpts'
 
 def main(args):
-    os.makedirs(f"{trained_dir}/{EXP_NAME}/", exist_ok=True)
-    # wandb.init(project="DrumTranscriber", name=EXP_NAME)
     
+    BATCH_SIZE = args.batch_size # Default : 4 
+    EXP_NAME = f"{datetime.datetime.now().strftime('%Y-%m-%d-%H')}-STDT-{args.train_type}-{args.layer_cut}_{args.dim_cut}_{args.batch_size}"
+    os.makedirs(f"{trained_dir}/{EXP_NAME}/", exist_ok=True)
+
+    if args.wandb == True: 
+        wandb.init(project="DrumTranscriber", name=EXP_NAME)
+        WANDB = True
+    else:
+        WANDB = False    
+
     train_dataset = DrumSlayerDataset(data_dir, "train", audio_encoding_type, args)
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     valid_dataset = DrumSlayerDataset(data_dir, "valid", audio_encoding_type, args)
@@ -106,8 +114,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--train_type', type=str, default='mono', help='ksh, kshm, kick, snare, hihat')
+    parser.add_argument('--train_type', type=str, default='kick', help='ksh, kshm, kick, snare, hihat')
+    parser.add_argument('--wandb', type=bool, default=True, help='True, False')
+    parser.add_argument('--layer_cut', type=int, default='2', help='enc(or dec)_num_layers // layer_cut')
+    parser.add_argument('--dim_cut', type=int, default='2', help='enc(or dec)_num_heads, _d_model // dim_cut')
+    parser.add_argument('--batch_size', type=int, default='4', help='batch size')
     args = parser.parse_args()
 
     main(args)
-    
