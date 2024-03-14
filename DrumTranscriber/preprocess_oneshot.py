@@ -120,9 +120,9 @@ def main():
 
 
                 wav = torch.from_numpy(wav)
-                # with torch.no_grad(): # dim ["latents" 72, "codes" 9 , "z" 1024]
+                # with torch.no_grad():
                 x = model.preprocess(wav, 44100)
-                z, codes, latents,_ ,_ = model.encode(x)
+                z, codes, latents,_ ,_ = model.encode(x)  # dim ["latents" 72, "codes" 9 , "z" 1024]
                 # z_np = z.cpu().numpy()
                 codes_16bit = codes.numpy().astype('int16')
                 # latents_np = latents.cpu().numpy()

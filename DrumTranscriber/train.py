@@ -1,5 +1,7 @@
-from encoder_decoder_inst import EncoderDecoderModule, EncoderDecoderConfig    
-from dataset import DrumSlayerDataset
+# from encoder_decoder_inst import EncoderDecoderModule, EncoderDecoderConfig    
+# from dataset import DrumSlayerDataset
+from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
+from dataset_c import DrumSlayerDataset
 from torch.utils.data import DataLoader
 import wandb
 import lightning.pytorch as pl
@@ -10,7 +12,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 import torch
 import argparse
 
-NUM_DEVICES = 4,5,6,7
+NUM_DEVICES = 2,3,4,5,6,7
 NUM_WORKERS = 0
 
 # # Set the desired CUDA device number
@@ -31,7 +33,7 @@ trained_dir = '/workspace/DrumTranscriber/ckpts'
 def main(args):
     
     BATCH_SIZE = args.batch_size # Default : 4 
-    EXP_NAME = f"{datetime.datetime.now().strftime('%Y-%m-%d-%H')}-STDT-{args.train_type}-{args.layer_cut}_{args.dim_cut}_{args.batch_size}"
+    EXP_NAME = f"{datetime.datetime.now().strftime('%m-%d-%H-%M')}-STDT-{args.train_type}-{args.layer_cut}_{args.dim_cut}_{args.batch_size}"
     os.makedirs(f"{trained_dir}/{EXP_NAME}/", exist_ok=True)
 
     if args.wandb == True: 

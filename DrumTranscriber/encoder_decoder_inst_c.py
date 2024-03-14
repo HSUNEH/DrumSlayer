@@ -61,13 +61,10 @@ class EncoderDecoderModule(pl.LightningModule):
             self.padding_in_loss_functions_r = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)]
     def training_step(self, batch, batch_idx):
         total_loss, padding_loss, audio_losses = self.step(batch)
-        
         self.log("train_total_loss", total_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         # if self.config.train_type == 'kshm':
         self.log("train_padding_loss", padding_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("train_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
-        if torch.isnan(total_loss):
-            return torch.tensor(0.0, requires_grad=True)
         return total_loss
     
     def validation_step(self, batch, batch_idx):
@@ -81,44 +78,7 @@ class EncoderDecoderModule(pl.LightningModule):
     def configure_optimizers(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return self.optimizer
-    def loss_calculate(self, dac_length, y, y_pred):
-        audio_losses = []
-        padding_losses = []
-        padding_in_losses = []
-        for j in range(len(dac_length)): #for j range(batch)
-            for i in range(9): ##number
-                # audio_logits = y_pred[j,:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                # audio_target = y[j,1:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
-                # audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
-                
-                # padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
-                # padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
-                # padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
-                
-                audio_logits = y_pred[j,i:dac_length[j]+i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                audio_target = y[j,1+i:dac_length[j]+1+i,i].long() # 4*2738 # end token 까지 포함
-                audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
-                
-                padding_in_logits_l = y_pred[j,:i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                padding_in_target_l = y[j,1:1+i,i].long() # 4*2738 # end token 까지 포함
-                if i != 0: 
-                    padding_in_losses.append(self.padding_in_loss_functions_l[i](padding_in_logits_l, padding_in_target_l))
-                
-                padding_in_logits_r = y_pred[j,dac_length[j]+i:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                padding_in_target_r = y[j,dac_length[j]+1+i:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
-                padding_in_losses.append(self.padding_in_loss_functions_r[i](padding_in_logits_r, padding_in_target_r))
-                
-                padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
-                padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
-                padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
-
-        total_loss = sum(padding_losses) + sum(audio_losses) + sum(padding_in_losses)
-        # loss = total_loss / 10.0 ##number
-        loss = total_loss / 9 / 3 ##number
-            
-        return loss, (sum(padding_losses)+sum(padding_in_losses))/18.0 , sum(audio_losses)/9.0 # total loss, padding loss, audio loss
-
-        
+    
     def step(self, batch):
         x, y, dac_length = batch # x: audio_rep, y: midi_audio_tokens  # x.shape : (4, TODO(431) , 2, 9), y.shape : (4, 10, 1472) 
         y = rearrange(y, 'b v t -> b t v') # (4, 1472, 10)
@@ -170,8 +130,42 @@ class EncoderDecoderModule(pl.LightningModule):
             # y_pred : torch.Size([4, 2737, 2157]) b, t, v
             # y : torch.Size([4, 2738, 19])
             
-            total_loss, padding_loss, audio_loss = self.loss_calculate(dac_length, y, y_pred)
-        return total_loss, padding_loss, audio_loss
+            # TODO : Audio DAC Loss
+            audio_losses = []
+            padding_losses = []
+            padding_in_losses = []
+            for j in range(len(dac_length)): #for j range(batch)
+                for i in range(9): ##number
+                    # audio_logits = y_pred[j,:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
+                    # audio_target = y[j,1:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
+                    # audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
+                    
+                    # padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
+                    # padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
+                    # padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
+                    
+                    audio_logits = y_pred[j,i:dac_length[j]+i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
+                    audio_target = y[j,1+i:dac_length[j]+1+i,i].long() # 4*2738 # end token 까지 포함
+                    audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
+                    
+                    padding_in_logits_l = y_pred[j,:i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
+                    padding_in_target_l = y[j,1:1+i,i].long() # 4*2738 # end token 까지 포함
+                    if i != 0: 
+                        padding_in_losses.append(self.padding_in_loss_functions_l[i](padding_in_logits_l, padding_in_target_l))
+                    
+                    padding_in_logits_r = y_pred[j,dac_length[j]+i:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
+                    padding_in_target_r = y[j,dac_length[j]+1+i:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
+                    padding_in_losses.append(self.padding_in_loss_functions_r[i](padding_in_logits_r, padding_in_target_r))
+                    
+                    padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
+                    padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
+                    padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
+
+            total_loss = sum(padding_losses) + sum(audio_losses) + sum(padding_in_losses)
+            # loss = total_loss / 10.0 ##number
+            loss = total_loss / 9 / 3 ##number
+            
+        return loss, (sum(padding_losses)+sum(padding_in_losses))/18.0 , sum(audio_losses)/9.0 ##number
 
     def forward(self, batch): # evaluation step
         
@@ -181,8 +175,41 @@ class EncoderDecoderModule(pl.LightningModule):
         y_pred = self.encoder_decoder(x)
         
         ###### Loss Calculation ######
-        total_loss, padding_loss, audio_loss = self.loss_calculate(dac_length, y, y_pred)
-        return y_pred ,total_loss, padding_loss, audio_loss
+        audio_losses = []
+        padding_losses = []
+        padding_in_losses = []
+        for j in range(len(dac_length)): #for j range(batch)
+            for i in range(9): ##number
+                # audio_logits = y_pred[j,:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
+                # audio_target = y[j,1:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
+                # audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
+                
+                # padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
+                # padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
+                # padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
+                breakpoint()
+                audio_logits = y_pred[j,i:dac_length[j]+i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
+                audio_target = y[j,1+i:dac_length[j]+1+i,i].long() # 4*2738 # end token 까지 포함
+                audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
+                
+                padding_in_logits_l = y_pred[j,:i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
+                padding_in_target_l = y[j,1:1+i,i].long() # 4*2738 # end token 까지 포함
+                if i != 0: 
+                    padding_in_losses.append(self.padding_in_loss_functions_l[i](padding_in_logits_l, padding_in_target_l))
+                
+                padding_in_logits_r = y_pred[j,dac_length[j]+i:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
+                padding_in_target_r = y[j,dac_length[j]+1+i:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
+                padding_in_losses.append(self.padding_in_loss_functions_r[i](padding_in_logits_r, padding_in_target_r))
+                
+                padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
+                padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
+                padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
+
+        total_loss = sum(padding_losses) + sum(audio_losses) + sum(padding_in_losses)
+        # loss = total_loss / 10.0 ##number
+        loss = total_loss / 9 / 3 ##number
+        breakpoint()
+        return y_pred , loss, sum(padding_losses),sum(padding_in_losses), sum(audio_losses) ##number
 
 
 class EncoderDecoder(nn.Module):

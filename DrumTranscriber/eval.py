@@ -1,5 +1,5 @@
-from encoder_decoder_inst import EncoderDecoderModule, EncoderDecoderConfig    
-from dataset import DrumSlayerDataset
+from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
+from dataset_c import DrumSlayerDataset
 from torch.utils.data import DataLoader
 import wandb
 import lightning.pytorch as pl
@@ -131,81 +131,84 @@ def ksh_generate(test_dataloader):
 def inst_generate(test_dataloader, inst):
 
     for idx, batch in tqdm(enumerate(test_dataloader)):
-        x, y = batch # x : torch.Size([1, 345, 2, 9]) , y : torch.Size([1, 9, 1063])
+        x, y, dac_length = batch # x : torch.Size([1, 345, 2, 9]) , y : torch.Size([1, 9, seq_len])
         # batch = x.cuda(7) , y.cuda(7)
         end = False
         error_count = 0
         error = False
+
         while end == False: #end token이 나올 때까지 반복
+
             error_count += 1
             if error_count == 5:
-                error = True
-            y_pred, end = model(batch) # torch.Size([1, seq_len, 9]), False
+                raise ValueError(f'error at {idx}_{inst}')
+            y_pred, loss, padding_losses, padding_in_losses, audio_losses = model(batch) # torch.Size([1, seq_len, 9]), False
+            y_pred, end = y_pred
+            breakpoint()
+            # Start token(0)
+            # dac(4~1027) + padding(2) 
+            # end(1)
+            # padding(2)
             
+            
+            # # for i in range(9):
+            # if y_pred[0,0,0] == 0 or y_pred[0,0,0] == 3:
+            #     pass
+            # else:
+            #     print('start token fucked')
+            #     end = False
+            #     continue
+
+            # inst_tokens = y_pred[:,1+0:354,:]          #torch.Size([1, 353, 9])
+            
+            # seq_len = 345
             # for i in range(9):
-            if y_pred[0,0,0] == 0 or y_pred[0,0,0] == 3:
-                pass
-            else:
-                print('start token fucked')
-                end = False
-                continue
+            #     # TODO: remove the max function later.
+            #     inst_tokens[:, :seq_len, i] = inst_tokens[:, i:i+seq_len, i] - 4
 
-            inst_tokens = y_pred[:,1+0:354,:]          #torch.Size([1, 353, 9])
-            
+            # inst_tokens = inst_tokens[:, :seq_len, :]   #torch.Size([1, 345, 9])
 
-            
-            seq_len = 345
-            for i in range(9):
-                # TODO: remove the max function later.
-                inst_tokens[:, :seq_len, i] = inst_tokens[:, i:i+seq_len, i] - 4
+            # # -2 값이 나오는 부분 전까지의 인덱스 찾기
+            # try:
+            #     inst_end_index = torch.where(inst_tokens == -2)[1][0]
+            #     for _ in range(1,9):                
+            #         if inst_end_index != torch.where(inst_tokens == -2)[1][_]:
+            #             print('Fucked DAC token')
+            #             end = False
+            #     if end == False:
+            #         continue    
+            #     inst_tensor = inst_tokens[:, :inst_end_index, :]
+            # except:
+            #     inst_tensor = inst_tokens
 
-            inst_tokens = inst_tokens[:, :seq_len, :]   #torch.Size([1, 345, 9])
 
-            # -2 값이 나오는 부분 전까지의 인덱스 찾기
-            try:
-                inst_end_index = torch.where(inst_tokens == -2)[1][0]
-                for _ in range(1,9):                
-                    if inst_end_index != torch.where(inst_tokens == -2)[1][_]:
-                        print('Fucked DAC token')
-                        end = False
-                if end == False:
-                    continue    
-                inst_tensor = inst_tokens[:, :inst_end_index, :]
-            except:
-                inst_tensor = inst_tokens
-
-        if error == True:
-            print(f'error at {idx}_{inst}')
-            continue
                 
-        # slicing하여 [1(batch_size), seq_len, 9] 형태로 만들기
-        
+        # # slicing하여 [1(batch_size), seq_len, 9] 형태로 만들기
+        # breakpoint()
+        # for i, codes in enumerate([inst_tensor]):
+        #     inst_codes = codes.permute(0,2,1) # torch.Size([1, 9, seq_len])
+        #     latent = dac_model.quantizer.from_codes(inst_codes)[0]
+        #     audio = dac_model.decode(latent)[0]
+        #     audio = audio.detach().numpy().astype(np.float32)
+
+        #     output_dir = result_dir + f'{inst}/{idx}_{inst}.wav'
+
+        #     os.makedirs(os.path.dirname(output_dir), exist_ok=True) #(1, 18432)
+        #     scipy.io.wavfile.write(output_dir, 44100, audio.T)
 
         
-        for i, codes in enumerate([inst_tensor]):
-            inst_codes = codes.permute(0,2,1) # torch.Size([1, 9, seq_len])
-            latent = dac_model.quantizer.from_codes(inst_codes)[0]
-            audio = dac_model.decode(latent)[0]
-            audio = audio.detach().numpy().astype(np.float32)
-
-            output_dir = result_dir + f'{inst}/{idx}_{inst}.wav'
-
-            os.makedirs(os.path.dirname(output_dir), exist_ok=True) #(1, 18432)
-            scipy.io.wavfile.write(output_dir, 44100, audio.T)
+        # inst_name = load_dac(f'/disk2/st_drums/generated_data/drum_data_test/{inst}ShotList.txt', idx)
+        
+        # destination_dir = f'/disk2/st_drums/results/{inst}/'
+        # inst_file = '/disk2/st_drums/one_shots/test/kick/'+ inst_name
+        # new_filename = f'{idx}_{inst}_t.wav'
+        # shutil.copy(inst_file, os.path.join(destination_dir, new_filename))
 
         
-        inst_name = load_dac(f'/disk2/st_drums/generated_data/drum_data_test/{inst}ShotList.txt', idx)
-        
-        destination_dir = f'/disk2/st_drums/results/{inst}/'
-        inst_file = '/disk2/st_drums/one_shots/test/kick/'+ inst_name
-        new_filename = f'{idx}_{inst}_t.wav'
-        shutil.copy(inst_file, os.path.join(destination_dir, new_filename))
-
-        
-        if end == False:
-            print('regenerate')
-        else:
-            print('generated')
+        # if end == False:
+        #     print('regenerate')
+        # else:
+        #     print('generated')
 
 
 # def main(ckpt_dir, data_dir, result_dir,audio_encoding_type, args):
@@ -293,10 +296,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.train_type == 'ksh':
-        ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-06-14-STDT-ksh-2_2/epoch=0-train_total_loss=0.14.ckpt'
+        ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-12-05-STDT-ksh-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
     elif args.train_type == 'kick':
         # ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-07-09-STDT-kick-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
-        ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-07-09-STDT-kick-2_2_4/epoch=0-train_total_loss=0.02.ckpt'
+        ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-14-02-50-STDT-kick-2_2_4/epoch=0-train_total_loss=3.97.ckpt'
     
     dac_model_path = dac.utils.download(model_type="44khz")
     dac_model = dac.DAC.load(dac_model_path) 
@@ -366,4 +369,3 @@ if __name__ == "__main__":
     #     scipy.io.wavfile.write(output_dir, 44100, audio.T)
         
         
-    #     breakpoint()
