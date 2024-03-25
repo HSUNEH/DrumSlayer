@@ -23,8 +23,11 @@ class DrumSlayerDataset(Dataset):
         
     def __getitem__(self, idx):
         audio_rep = np.load(self.file_path + f"drum_data_{self.split}/mixed_loops/{idx}_{self.encoding_type}.npy") ## dac npy 생성 -> preprocess_dac.py
-        audio_rep = rearrange(audio_rep, 'c d t -> t c d') # c: channel, d: dim, t: time
-
+        audio_rep = rearrange(audio_rep, 's d t -> t s d')
+        
+        # audio_rep = rearrange(audio_rep, 'c d t -> d t c') # c: channel, d: dim, t: time
+        # audio_rep_l, _ = self.tokenize_inst(audio_rep[:,:,0])
+        # audio_rep_l = rearrange(audio_rep_l, 'd t -> t d') 
         if self.train_type == "kshm":
             kick_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/kick_midi/kick_midi_{idx}.midi")
             snare_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/snare_midi/snare_midi_{idx}.midi")
@@ -40,23 +43,24 @@ class DrumSlayerDataset(Dataset):
 
         # Usage
         oneshot_path = '/disk2/st_drums/one_shots/'
-        kick_name = load_dac(self.file_path + f"drum_data_{self.split}/kickShotList.txt", idx)
-        kick_name = kick_name.replace('.wav', f'_{self.encoding_type}.npy')
-        kick_dac = np.load(oneshot_path + f"{self.split}/kick/{kick_name}") #snare, hhclosed # (2,9,431)
-        kick_dac_l = kick_dac[0] # (9, 431)
-        # kick_dac_r = kick_dac[1] # (9, 431)
-        
-        snare_name = load_dac(self.file_path + f"drum_data_{self.split}/snareShotList.txt", idx)
-        snare_name = snare_name.replace('.wav', f'_{self.encoding_type}.npy')
-        snare_dac = np.load(oneshot_path + f"{self.split}/snare/{snare_name}") 
-        snare_dac_l = snare_dac[0] # (9, 431)
-        # snare_dac_r = snare_dac[1] # (9, 431)
-
-        hihat_name = load_dac(self.file_path + f"drum_data_{self.split}/hihatShotList.txt", idx)
-        hihat_name = hihat_name.replace('.wav', f'_{self.encoding_type}.npy')
-        hihat_dac = np.load(oneshot_path + f"{self.split}/hhclosed/{hihat_name}")
-        hihat_dac_l = hihat_dac[0] # (9, 431)
-        # hihat_dac_r = hihat_dac[1] # (9, 431)
+        if self.train_type == "kick":
+            kick_name = load_dac(self.file_path + f"drum_data_{self.split}/kickShotList.txt", idx)
+            kick_name = kick_name.replace('.wav', f'_{self.encoding_type}.npy')
+            kick_dac = np.load(oneshot_path + f"{self.split}/kick/{kick_name}") #snare, hhclosed # (2,9,431)
+            kick_dac_l = kick_dac[0] # (9, 431)
+            # kick_dac_r = kick_dac[1] # (9, 431)
+        elif self.train_type == "snare":
+            snare_name = load_dac(self.file_path + f"drum_data_{self.split}/snareShotList.txt", idx)
+            snare_name = snare_name.replace('.wav', f'_{self.encoding_type}.npy')
+            snare_dac = np.load(oneshot_path + f"{self.split}/snare/{snare_name}") 
+            snare_dac_l = snare_dac[0] # (9, 431)
+            # snare_dac_r = snare_dac[1] # (9, 431)
+        elif self.train_type == "hihat":
+            hihat_name = load_dac(self.file_path + f"drum_data_{self.split}/hihatShotList.txt", idx)
+            hihat_name = hihat_name.replace('.wav', f'_{self.encoding_type}.npy')
+            hihat_dac = np.load(oneshot_path + f"{self.split}/hhclosed/{hihat_name}")
+            hihat_dac_l = hihat_dac[0] # (9, 431)
+            # hihat_dac_r = hihat_dac[1] # (9, 431)
 
         if self.train_type == "kshm":
             audio_tokens = self.tokenize_audio_mono(kick_midi, snare_midi, hihat_midi, kick_dac_l, snare_dac_l, hihat_dac_l)
@@ -70,7 +74,8 @@ class DrumSlayerDataset(Dataset):
             audio_tokens, dac_length = self.tokenize_inst(snare_dac_l)
         elif self.train_type == "hihat":
             audio_tokens, dac_length = self.tokenize_inst(hihat_dac_l)
-        
+
+
         return audio_rep, audio_tokens, dac_length
 
     def __len__(self):

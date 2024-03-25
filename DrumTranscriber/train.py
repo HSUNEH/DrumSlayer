@@ -1,7 +1,8 @@
-# from encoder_decoder_inst import EncoderDecoderModule, EncoderDecoderConfig    
-# from dataset import DrumSlayerDataset
-from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
+# from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
+from inst_decoder import InstDecoderModule, InstDecoderConfig
 from dataset_c import DrumSlayerDataset
+
+
 from torch.utils.data import DataLoader
 import wandb
 import lightning.pytorch as pl
@@ -12,14 +13,34 @@ from lightning.pytorch.loggers import TensorBoardLogger
 import torch
 import argparse
 
-NUM_DEVICES = 2,3,4,5,6,7
-NUM_WORKERS = 0
 
 # # Set the desired CUDA device number
 # torch.cuda.set_device(7)
 # device_number = torch.cuda.current_device()
 # print(f"CUDA device number: {device_number}")
 
+
+# class ValEveryNSteps(pl.Callback):
+#     def __init__(self, every_n_steps, model, val_dataloaders):
+#         super().__init__()
+#         self.last_run = None
+#         self.every_n_steps = every_n_steps
+#         self.model = model
+#         self.val_dataloaders = val_dataloaders
+
+#     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+#         if trainer.global_step == self.last_run:
+#             return
+#         else:
+#             self.last_run = None
+#         if trainer.global_step % self.every_n_steps == 0 and trainer.global_step != 0:
+#             trainer.training = False
+#             trainer.validating = True
+#             trainer.validate(model=self.model,dataloaders=self.val_dataloaders)
+#             trainer.validating = False
+#             trainer.training = True
+#             # trainer.logger_connector.epoch_end_reached = False
+#             self.last_run = trainer.global_step
 
 
 RESUME = False
@@ -42,85 +63,75 @@ def main(args):
     else:
         WANDB = False    
 
+    # debug_dataset = DrumSlayerDataset(data_dir, "debug", audio_encoding_type, args)
+    # debug_dataloader = DataLoader(debug_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     train_dataset = DrumSlayerDataset(data_dir, "train", audio_encoding_type, args)
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     valid_dataset = DrumSlayerDataset(data_dir, "valid", audio_encoding_type, args)
     valid_dataloader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
-    config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
+    # config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
+    # model = EncoderDecoderModule(config)
+    
+    config = InstDecoderConfig(audio_rep = audio_encoding_type, args = args)
+    model = InstDecoderModule(config)
 
-    model = EncoderDecoderModule(config)
+
+    # # LOAD PRETRAINED MODEL
+    # ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-24-14-09-STDT-kick-2_2_4/train_total_loss=2.15-valid_total_loss=11.76.ckpt'
+    # ckpt = torch.load(ckpt_dir, map_location='cpu')
+    # model.load_state_dict(ckpt['state_dict'])
+    
+    
     ddp_strategy = pl.strategies.DDPStrategy(find_unused_parameters=True)
 
-    # checkpoint_callback = pl.callbacks.ModelCheckpoint(
-    #     dirpath=f"{trained_dir}/{EXP_NAME}/",
-    #     monitor="val_content_loss",
-    #     mode = "min",
-    #     every_n_epochs=1,
-    #     filename = "{epoch}-{val_content_loss:.2f}",
-    #     verbose=True,
-    #     save_top_k=3,
-    #     save_last=False,
-    # )
-    # checkpoint_callback = pl.callbacks.ModelCheckpoint(
-    #     dirpath=f"{trained_dir}/{EXP_NAME}/",
-    #     # dirpath=f"/data5/kyungsu/ckpts/DrumSlayer/{EXP_NAME}/",
-    #     monitor="valid_total_loss",
-    #     mode = "min",
-    #     # every_n_steps=100,
-    #     filename = "{epoch}-{valid_total_loss:.2f}",
-    #     verbose=True,
-    #     save_top_k=3,
-    #     save_last=False,
-    # )
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        save_top_k=10,
+    valid_n_steps = 2000
+    check_point_n_steps = 2000
+    
+    n_step_checkpoint = pl.callbacks.ModelCheckpoint(
+        save_top_k=-1,
         monitor="train_total_loss",
         mode="min",
         dirpath=f"{trained_dir}/{EXP_NAME}/",
-        filename = "{epoch}-{train_total_loss:.2f}",
-        every_n_train_steps=5000, # n_steps
+
+        filename = "{train_total_loss:.2f}-{valid_total_loss:.2f}", 
+        # every_n_epochs = 1
+        every_n_train_steps=check_point_n_steps, # n_steps
     )
+    
+    n_step_earlystop = pl.callbacks.EarlyStopping(                                                                                                                                                                    
+                        monitor="valid_total_loss",                                                                                                                                                                        
+                        min_delta=0.00,                                                                                                                                                                            
+                        patience=5,                                                                                                                                                                                
+                        verbose=True,                                                                                                                                                                              
+                        mode="min",                                                                                                                                                                                
+                        check_on_train_epoch_end=False,                                                                                                                                                            
+                    )                                                                                                                                                                                          
+
     if WANDB:
         logger = WandbLogger(name=EXP_NAME, project="DrumSlayer")
-        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', callbacks=[checkpoint_callback], strategy=ddp_strategy)
+        # trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=5, precision='16-mixed', callbacks=[n_step_checkpoint, n_step_earlystop], strategy=ddp_strategy, val_check_interval=valid_n_steps)
+        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=3, precision='16-mixed', callbacks=[n_step_checkpoint], strategy=ddp_strategy, val_check_interval=valid_n_steps)
     else:
-        logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
-        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', callbacks=[checkpoint_callback], strategy=ddp_strategy)
+        # logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
+        # trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=5, precision='16-mixed', callbacks=[n_step_checkpoint, n_step_earlystop], strategy=ddp_strategy, val_check_interval=valid_n_steps)
+        trainer = pl.Trainer(accelerator="gpu", devices=NUM_DEVICES, max_epochs=4, precision='16-mixed',  callbacks=[n_step_checkpoint], strategy=ddp_strategy)
 
 
     trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader)
 
 
-    # config = DelayDecoderConfig(positional_encoding=POSITIONAL_ENCODING, num_projection_layers=2, wandb=WANDB)
-    # if RESUME:
-    #     model = DelayDecoderModule.load_from_checkpoint(f"/data5/kyungsu/ckpts/MALL-E/{EXP_NAME}/last.ckpt", config=config)
-    # else:
-    #     model = DelayDecoderModule(config)
-
-    # if WANDB:
-    #     wandb.config.update({"batch_size": BATCH_SIZE, "num_workers": NUM_WORKERS})
-    #     wandb.watch(model)
-    # checkpoint_callback = pl.callbacks.ModelCheckpoint(
-    #     dirpath=f"/data5/kyungsu/ckpts/MALL-E/{EXP_NAME}",
-    #     filename = "last",
-    #     verbose=True,
-    #     every_n_train_steps=1000,
-    #     save_top_k=-1,
-    #     save_last=False,
-    #     enable_version_counter=False
-    # )
-    
-    # trainer = pl.Trainer(accelerator="gpu", devices=NUM_DEVICES, max_epochs=1, callbacks=[checkpoint_callback], precision='16-mixed')
-    # trainer.fit(model=model, train_dataloaders=train_dataloader)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_type', type=str, default='kick', help='ksh, kshm, kick, snare, hihat')
-    parser.add_argument('--wandb', type=bool, default=True, help='True, False')
-    parser.add_argument('--layer_cut', type=int, default='2', help='enc(or dec)_num_layers // layer_cut')
-    parser.add_argument('--dim_cut', type=int, default='2', help='enc(or dec)_num_heads, _d_model // dim_cut')
-    parser.add_argument('--batch_size', type=int, default='4', help='batch size')
+    parser.add_argument('--wandb', type=bool, default=False, help='True, False')
+    parser.add_argument('--layer_cut', type=int, default='1', help='enc(or dec)_num_layers // layer_cut')
+    parser.add_argument('--dim_cut', type=int, default='1', help='enc(or dec)_num_heads, _d_model // dim_cut')
+    parser.add_argument('--batch_size', type=int, default='16', help='batch size')
     args = parser.parse_args()
+    
+    NUM_DEVICES = [3]
+    
+    NUM_WORKERS = 15
 
     main(args)

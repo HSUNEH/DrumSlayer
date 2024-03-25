@@ -18,7 +18,7 @@ class DelayDecoderConfig:
         self.embed_dropout = 0.1
         self.ff_dropout = 0.1
         self.midi_vocab_size = midi_vocab_size
-        self.audio_vocab_size = 1024 + 1
+        self.audio_vocab_size = 1024 + 4
         self.max_len = 1200
         self.positional_encoding = positional_encoding
         assert num_projection_layers in [1, 2, 3]
@@ -157,7 +157,7 @@ class DelayDecoder(nn.Module):
             first_embedding = self.sos_tok_embed(torch.zeros(batch_size, 1).long().cuda())
         # Else, first token is clap embedding.
         else:
-            first_embedding = self.clap_projection(clap_embedding).unsqueeze(1)
+            first_embedding = self.clap_projection(clap_embedding).unsqueeze(1) # -> (batch_size, 1, embed_dim)
 
         if x.size(1) == 0:
             embedding = first_embedding
@@ -165,7 +165,7 @@ class DelayDecoder(nn.Module):
             tok_embedding = self.midi_tok_embed(x[:,:,0])
             for i in range(9):
                 audio_tok_embedding = self.audio_tok_embed[i](x[:,:,i+1])
-                tok_embedding = tok_embedding + audio_tok_embedding
+                tok_embedding = tok_embedding + audio_tok_embedding # -> (batch_size, seq_len, embed_dim)
             embedding = torch.cat((first_embedding, tok_embedding), dim=1)
 
         if self.config.positional_encoding:

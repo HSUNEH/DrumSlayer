@@ -11,6 +11,8 @@ from einops import rearrange
 
 class EncoderDecoderConfig:
     def __init__(self, audio_rep, args, **kwargs):
+        self.train_type = args.train_type
+        
         # Encoder hparams.
         self.enc_num_layers = 10//args.layer_cut
         self.enc_num_heads = 12//args.dim_cut
@@ -27,7 +29,10 @@ class EncoderDecoderConfig:
         self.ff_dropout = 0.1
         # Other hparams.
         self.midi_vocab_size = 1000+128+4+3 ## <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types. 1134
-        self.audio_vocab_size = 1024+4+1 # 1024 dac tokens + <start>,<end>,<pad>,<sep>
+        if self.train_type == 'kshm' or self.train_type == 'ksh':
+            self.audio_vocab_size = 1024+4+1 # 1024 dac tokens + <start>,<end>,<pad>,<sep>
+        else:
+            self.audio_vocab_size = 1024+4   # 1024 dac tokens + <start>,<end>,<pad>
         # self.dac_vocab_size = 4+1000+128+1025 # 2157 # <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types. + 1025 dac tokens
         # self.audio_rep = "latents" # "latents", "codes", "z"
         self.audio_rep = audio_rep
@@ -41,7 +46,7 @@ class EncoderDecoderConfig:
             raise ValueError("Invalid audio_rep type")
         self.max_target_len = 1472
         self.padding_loss_lambda = 0.1
-        self.train_type = args.train_type
+        
         if self.train_type not in ['ksh', 'kick', 'snare', 'hihat', 'kshm'] :
             raise ValueError("Invalid train_type")
         
@@ -51,14 +56,17 @@ class EncoderDecoderModule(pl.LightningModule):
         super().__init__()
         self.config = config
         self.encoder_decoder = EncoderDecoder(config)
-        # self.loss_function = self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim+1)] ##number
+        # self.loss_function = self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim+1)] 
         if self.config.train_type == 'kshm':
-            self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim+1)] ##number
+            self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim+1)] 
         else: 
-            self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)] ##number
-            self.padding_loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)] ##number
-            self.padding_in_loss_functions_l = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)]
-            self.padding_in_loss_functions_r = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)]
+            self.total_loss = nn.CrossEntropyLoss()
+            self.audio_loss = nn.CrossEntropyLoss()
+            self.padding_loss = nn.CrossEntropyLoss()
+            # self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)] 
+            # self.padding_loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)] 
+            # self.padding_in_loss_functions_l = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)]
+            # self.padding_in_loss_functions_r = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)]
     def training_step(self, batch, batch_idx):
         total_loss, padding_loss, audio_losses = self.step(batch)
         self.log("train_total_loss", total_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
@@ -78,139 +86,93 @@ class EncoderDecoderModule(pl.LightningModule):
     def configure_optimizers(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return self.optimizer
-    
+
     def step(self, batch):
         x, y, dac_length = batch # x: audio_rep, y: midi_audio_tokens  # x.shape : (4, TODO(431) , 2, 9), y.shape : (4, 10, 1472) 
         y = rearrange(y, 'b v t -> b t v') # (4, 1472, 10)
         y_pred = self.encoder_decoder(x, y[:,:-1]) # (batch_size, seq_len, total_vocab_size) torch.Size([4, 1471, 10396])
+        
 
         if self.config.train_type == 'kshm': #TODO : need to fixed (padding 뒤로 뺌) #kick snare hihat dac +  midi token
-            # MIDI LOSS
-            midi_target = rearrange(y[:,1:,0], 'b t -> (b t)') #5884 = b*1471
-            dac_pred = rearrange(y_pred, 'b t v -> (b t) v') 
-
-            midi_pred = rearrange(y_pred[:,:,:self.config.midi_vocab_size], 'b s v -> (b s) v')
-            midi_loss = self.loss_functions[0](midi_pred, midi_target.long()) # CrossEntropyLoss
-
-            
-            # Audio DAC Loss
-            audio_losses = []
-            for i in range(9): ##number
-                # y_pred : torch.Size([4, 2737, 2157]) b, t, v
-                # y : torch.Size([4, 2738, 19])
-                audio_logits = rearrange(y_pred[:,:,self.config.midi_vocab_size+i*self.config.audio_vocab_size:self.config.midi_vocab_size+(i+1)*self.config.audio_vocab_size], 'b s v -> (b s) v') # (4*2737, v)
-                
-                audio_target = rearrange(y[:,1:,i+1], 'b s -> (b s)').long() # 4*2738
-                audio_losses.append(self.loss_functions[i+1](audio_logits, audio_target))
-            total_loss = midi_loss + sum(audio_losses)
-            loss = total_loss / 10.0 ##number 
-            padding_loss =midi_loss
-        
-        elif self.config.train_type == 'ksh':  # TODO : 나중에 합시다
-            # MIDI LOSS
-            padding_loss =0 
-            
-           
-            audio_losses = []
-            for i in range(9): ##number
-                # y_pred : torch.Size([4, 2737, 2157]) b, t, v
-                # y : torch.Size([4, 2738, 19])
-                audio_logits = rearrange(y_pred[:,:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size], 'b s v -> (b s) v') # (4*2737, v)
-                audio_target = rearrange(y[:,1:,i], 'b s -> (b s)').long() # 4*2738
-                audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
-                
-                # audio_target = rearrange(y[:,1:,i+1], 'b s -> (b s)').long() # 4*2738
-                # audio_losses.append(self.loss_functions[i+1](audio_logits, audio_target))
-            total_loss = padding_loss + sum(audio_losses)
-            # loss = total_loss / 10.0 ##number
-            loss = total_loss / 9 ##number
-            
+            pass    
+        elif self.config.train_type == 'ksh':  
+            pass
         else: #inst # TODO 이거 먼저 
 
             # y_pred : torch.Size([4, 2737, 2157]) b, t, v
             # y : torch.Size([4, 2738, 19])
             
-            # TODO : Audio DAC Loss
             audio_losses = []
             padding_losses = []
             padding_in_losses = []
-            for j in range(len(dac_length)): #for j range(batch)
-                for i in range(9): ##number
-                    # audio_logits = y_pred[j,:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                    # audio_target = y[j,1:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
-                    # audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
-                    
-                    # padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
-                    # padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
-                    # padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
-                    
-                    audio_logits = y_pred[j,i:dac_length[j]+i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                    audio_target = y[j,1+i:dac_length[j]+1+i,i].long() # 4*2738 # end token 까지 포함
-                    audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
-                    
-                    padding_in_logits_l = y_pred[j,:i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                    padding_in_target_l = y[j,1:1+i,i].long() # 4*2738 # end token 까지 포함
-                    if i != 0: 
-                        padding_in_losses.append(self.padding_in_loss_functions_l[i](padding_in_logits_l, padding_in_target_l))
-                    
-                    padding_in_logits_r = y_pred[j,dac_length[j]+i:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                    padding_in_target_r = y[j,dac_length[j]+1+i:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
-                    padding_in_losses.append(self.padding_in_loss_functions_r[i](padding_in_logits_r, padding_in_target_r))
-                    
-                    padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
-                    padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
-                    padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
-
-            total_loss = sum(padding_losses) + sum(audio_losses) + sum(padding_in_losses)
-            # loss = total_loss / 10.0 ##number
-            loss = total_loss / 9 / 3 ##number
+                        
+            total_losses = []
+            # #### RULE 0 #### : Loss for all tokens
+            # y_pred_ = y_pred.view((y_pred.shape[0]* y_pred.shape[1]* 9), 1028)
+            # y_target = rearrange(y[:,1:,:], 'b t d -> (b t d)') # 9
+            # total_losses.append(self.total_loss(y_pred_, y_target.long()))
+            # # RULE 0
+            # total_loss = sum(total_losses)
             
-        return loss, (sum(padding_losses)+sum(padding_in_losses))/18.0 , sum(audio_losses)/9.0 ##number
+            #### RULE 1 #### : Loss for contents, padding
+            for j in range(len(dac_length)): #for j range(batch)
+                
+                audio_logits = y_pred[j,:dac_length[j]+1+8,:].view(((dac_length[j]+1+8)* 9),1028)# (seq_len, v)
+                audio_target = y[j,1:dac_length[j]+1+8+1,:].reshape(((dac_length[j]+1+8)* 9)).long() # 4*2738 # end token 까지 포함
+                audio_losses.append(self.audio_loss(audio_logits, audio_target))
+                
+                padding_logits = y_pred[j,dac_length[j]+1+8:,:].view((y_pred.shape[1]-(dac_length[j]+1+8))*9,1028)
+                padding_target = y[j,dac_length[j]+1+8+1:,:].reshape(((y_pred.shape[1]-(dac_length[j]+1+8))* 9)).long()
+                if padding_logits.shape[0] != 0: 
+                    padding_losses.append(self.padding_loss(padding_logits, padding_target))
+                # len(audio_losses) = 4 / len(padding_losses) = 4
+
+        
+            # ##### RULE 2 #### : Loss for contents, padding, padding_in
+            # for j in range(len(dac_length)): #for j range(batch)
+
+            #     audio_logits = y_pred[j,1:dac_length[j]+1,:].view((dac_length[j])* 9,1028)# (seq_len, v)
+            #     audio_target = y[j,1:dac_length[j]+1,:].reshape((dac_length[j])* 9).long() # 4*2738 # end token 까지 포함
+            #     audio_losses.append(self.audio_loss(audio_logits, audio_target))
+                
+            #     padding_in_logits_l = y_pred[j,:1,:].view((1)* 9,1028)# (seq_len, v)
+            #     padding_in_target_l = y[j,1:,:].reshape((1)* 9).long() # 4*2738 # end token 까지 포함
+            #     if i != 0:
+            #         padding_in_losses.append(self.padding_loss(padding_in_logits_l, padding_in_target_l))
+                
+            #     padding_in_logits_r = y_pred[j,dac_length[j]+1:dac_length[j]+1+8,:].view((8)* 9,1028)# (seq_len, v)
+            #     padding_in_target_r = y[j,dac_length[j]+1:dac_length[j]+1+8,:].reshape((8)* 9).long() # 4*2738 # end token 까지 포함
+            #     padding_in_losses.append(self.padding_loss(padding_in_logits_r, padding_in_target_r))
+                
+            #     padding_logits = y_pred[j,dac_length[j]+1+8:,:].view((y_pred.shape[1]-(dac_length[j]+1+8))*9,1028)
+            #     padding_target = y[j,dac_length[j]+1+8+1:,:].reshape(((y_pred.shape[1]-(dac_length[j]+1+8))* 9)).long()
+            #     if padding_logits.shape[0] != 0:
+            #         padding_losses.append(self.padding_loss(padding_logits, padding_target))
+            
+            # RULE 1,2
+            total_loss = sum(audio_losses) + sum(padding_losses)
+            
+            
+        return total_loss, sum(padding_losses) , sum(audio_losses) ##number
 
     def forward(self, batch): # evaluation step
         
         x, y, dac_length= batch
+        # x : torch.Size([1, 345, 2, 9])
+        # y : torch.Size([1, 9, 355])
+        # y : torch.Size([1, 355, 9])
+         
+        # ## Training Check ##
+        # y = rearrange(y, 'b v t -> b t v') # (4, 1472, 10)
+        # y_pred = self.encoder_decoder(x, y[:,:-1]) # (batch_size, seq_len, total_vocab_size) torch.Size([4, 1471, 10396])
+        
         
         ###### For Inference ######
         y_pred = self.encoder_decoder(x)
+        # y_pred : torch.Size([1, 355, 9])    
         
-        ###### Loss Calculation ######
-        audio_losses = []
-        padding_losses = []
-        padding_in_losses = []
-        for j in range(len(dac_length)): #for j range(batch)
-            for i in range(9): ##number
-                # audio_logits = y_pred[j,:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                # audio_target = y[j,1:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
-                # audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
-                
-                # padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
-                # padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
-                # padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
-                breakpoint()
-                audio_logits = y_pred[j,i:dac_length[j]+i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                audio_target = y[j,1+i:dac_length[j]+1+i,i].long() # 4*2738 # end token 까지 포함
-                audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
-                
-                padding_in_logits_l = y_pred[j,:i,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                padding_in_target_l = y[j,1:1+i,i].long() # 4*2738 # end token 까지 포함
-                if i != 0: 
-                    padding_in_losses.append(self.padding_in_loss_functions_l[i](padding_in_logits_l, padding_in_target_l))
-                
-                padding_in_logits_r = y_pred[j,dac_length[j]+i:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
-                padding_in_target_r = y[j,dac_length[j]+1+i:dac_length[j]+1+8+1,i].long() # 4*2738 # end token 까지 포함
-                padding_in_losses.append(self.padding_in_loss_functions_r[i](padding_in_logits_r, padding_in_target_r))
-                
-                padding_logits = y_pred[j,dac_length[j]+1+8:,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]
-                padding_target = y[j,dac_length[j]+1+8+1:,i].long() 
-                padding_losses.append(self.padding_loss_functions[i](padding_logits, padding_target))
 
-        total_loss = sum(padding_losses) + sum(audio_losses) + sum(padding_in_losses)
-        # loss = total_loss / 10.0 ##number
-        loss = total_loss / 9 / 3 ##number
-        breakpoint()
-        return y_pred , loss, sum(padding_losses),sum(padding_in_losses), sum(audio_losses) ##number
-
+        return y_pred 
 
 class EncoderDecoder(nn.Module):
     def __init__(self, config):
@@ -229,53 +191,64 @@ class EncoderDecoder(nn.Module):
             self.dac_projection_layer = nn.Linear(config.dec_d_model,  config.audio_vocab_size * 9)
         self.midi_embedding_layer = nn.Embedding(config.midi_vocab_size, config.dec_d_model)
         self.audio_embedding_layer = nn.ModuleList([nn.Embedding(config.audio_vocab_size, config.dec_d_model) for _ in range(9)]) ##number
-
+        self.inst_embedding_layer = nn.ModuleList([nn.Embedding(config.audio_vocab_size, config.dec_d_model) for _ in range(9)]) ##number
+    
     def forward(self, x, y=None, strategy="greedy", sample_arg=None):
+        if self.config.train_type == 'kshm':
+            pass
+        elif self.config.train_type == 'ksh':
+        # x: torch.Size([4, 345, 2, 9])
+        # y: torch.Size([4, 1062, 9])
+            pass
+        else: 
         # Input
         # x: [batch_size, seq_len, 2, audio_rep_dim:9] 2 for stereo.        torch.Size([4, TODO(431), 2, 9])  audio_rep
+        # -> x: [batch_size, seq_len, audio_rep_dim] 
         # y: [batch_size, seq_len, 10]                                      torch.Size([4, 1471, 10])   target_midi_audio_token
-        
-        #### x Embedding ####
-        x_l = x[:,:,0,:].long() # x: torch.Size([1, 345, 2, 9]) -> x_l : torch.Size([4, 345, 9])
-        
-        for i in range(self.config.audio_rep_dim): 
-            x_l_tok_embedding = self.audio_embedding_layer[i](x_l[:,:,i])
-            if i == 0:
-                tok_embedding = x_l_tok_embedding
-            tok_embedding += x_l_tok_embedding
-        x_emb_l = self.positional_encoder(tok_embedding) #[batch_size, seq_len, dec_d_model]
-        
-        #### Encoder ####
-        enc_output = self.encoder(x_emb_l) # [batch_size, seq_len, d_model]:  [4, TODO(2*431), 768] #TODO : concat 이 맘에 안들면 Parallel로 바꿔보기
-   
-        #### y Generation ####
-        if y is None:
-            if self.config.train_type == 'ksh':
-                seq_len =  1062
-            elif self.config.train_type == 'kick' or self.config.train_type == 'snare' or self.config.train_type == 'hihat':
-                seq_len =  345+8+1
-            return self.generate(enc_output, seq_len =  seq_len, strategy=strategy, sample_arg=sample_arg)
 
-        #### y Embedding ####
-        if self.config.train_type == 'kshm':
-            tok_embedding = self.midi_embedding_layer(y[:,:,0]) # torch.Size([4, 1471]) -> torch.Size([4, 1471, 768])
-
-        for i in range(9): 
-            if self.config.train_type == 'kshm': #[batch_size, seq_len, 10]        
-                audio_tok_embedding = self.audio_embedding_layer[i](y[:,:,i+1])
-
-            else: # [batch_size, seq_len, 9]        
-                audio_tok_embedding = self.audio_embedding_layer[i](y[:,:,i])  # y[:,:,i] = [batch_size, seq_len, 1] -> torch.Size([batch_size, seq_len, dec_d_model])
+            #### x Embedding ####
+            x_l = x[:,:,0,:].long() # x: torch.Size([1, 345, 2, 9]) -> x_l : torch.Size([4, 345, 9]) :  stereo to mono
+            # x_l = x[:,:,:].long()
+            for i in range(self.config.audio_rep_dim): 
+                x_l_tok_embedding = self.audio_embedding_layer[i](x_l[:,:,i])
                 if i == 0:
-                    tok_embedding = audio_tok_embedding
-                tok_embedding += audio_tok_embedding # torch.Size([4, 1471, 768]) #TODO: 덧셈이 맞는지 확인 -> 맞다고 하네요. but 다른 방법론도 적용해보자
-        tok_embedding = self.positional_encoder(tok_embedding) # [batch_size, seq_len, d_model] -> [batch_size, seq_len, d_model] :[4, 1471, 768]
-        
-        #### Decoding ####
-        y_out = self.decoder(tok_embedding, enc_output) # [batch_size, seq_len, d_model] -> [batch_size, seq_len, d_model]
+                    x_tok_embedding = x_l_tok_embedding
+                x_tok_embedding = x_tok_embedding+ x_l_tok_embedding
+            x_emb_l = self.positional_encoder(x_tok_embedding) #[batch_size, seq_len, dec_d_model]
+            
+            #### Encoder ####
+            enc_output = self.encoder(x_emb_l) # [batch_size, seq_len, d_model]:  [4, TODO(2*431), 768] #TODO : concat 이 맘에 안들면 Parallel로 바꿔보기
+            
+            #### y Generation ####
+            if y is None:
+                if self.config.train_type == 'ksh':
+                    seq_len =  1062
+                elif self.config.train_type == 'kick' or self.config.train_type == 'snare' or self.config.train_type == 'hihat':
+                    seq_len =  345+8+1
+                return self.generate(enc_output, seq_len =  seq_len, strategy=strategy, sample_arg=sample_arg)
 
-        audio_logits = self.dac_projection_layer(y_out) # [batch_size, seq_len, (config.midi_vocab_size + )config.audio_vocab_size * 9]
-        return audio_logits # y_pred : torch.Size([4, 1471, 10394])
+            #### y Embedding ####
+            if self.config.train_type == 'kshm':
+                y_tok_embedding = self.midi_embedding_layer(y[:,:,0]) # torch.Size([4, 1471]) -> torch.Size([4, 1471, 768])
+
+            for i in range(9): 
+                if self.config.train_type == 'kshm': #[batch_size, seq_len, 10]        
+                    audio_tok_embedding = self.inst_embedding_layer[i](y[:,:,i+1])
+
+                else: # [batch_size, seq_len, 9]        
+                    audio_tok_embedding = self.inst_embedding_layer[i](y[:,:,i])  # y[:,:,i] = [batch_size, seq_len, 1] -> torch.Size([batch_size, seq_len, dec_d_model])
+                    if i == 0:
+                        y_tok_embedding = audio_tok_embedding
+                    y_tok_embedding = y_tok_embedding + audio_tok_embedding #TODO: 덧셈이 맞는지 확인 -> 맞다고 하네요. but 다른 방법론도 적용해보자
+            y_emb_l = self.positional_encoder(y_tok_embedding) # [batch_size, seq_len, d_model] -> [batch_size, seq_len, d_model] :[4, 1471, 768]
+            
+            #### Decoding ####
+            y_out = self.decoder(y_emb_l, enc_output) # [batch_size, seq_len, d_model] -> [batch_size, seq_len, d_model]
+
+            audio_logits = self.dac_projection_layer(y_out) # [batch_size, seq_len, (config.midi_vocab_size + )config.audio_vocab_size * 9]
+
+
+            return audio_logits # y_pred : torch.Size([4, 1471, 10394])
 
 
     def generate(self, enc_output, seq_len=1061+1, strategy='greedy', sample_arg=None):
@@ -286,13 +259,13 @@ class EncoderDecoder(nn.Module):
         batch_size = enc_output.shape[0]
         # Start token.
         y = torch.zeros(batch_size, 1, 9).long()#.cuda()
-
+        end = False
         for i in tqdm(range(seq_len)):
             for j in range(9):
                 audio_tok_embedding = self.audio_embedding_layer[j](y[:,:,j]) # torch.Size([1, 1, 384])
                 if j == 0:
                     tok_embedding = audio_tok_embedding
-                tok_embedding += audio_tok_embedding
+                tok_embedding = tok_embedding+ audio_tok_embedding
             tok_embedding = self.positional_encoder(tok_embedding)
             y_out = self.decoder(tok_embedding, enc_output)
             audio_logits = self.dac_projection_layer(y_out) # [batch_size, seq_len(1), VOCAB_SIZE]
@@ -300,14 +273,16 @@ class EncoderDecoder(nn.Module):
             # top-p sampling
             sampled_token = self.sample(audio_logits[:,i,:], strategy=strategy, sample_arg=sample_arg) #[batch_size, 1, 9 or 10]
             if torch.all(sampled_token == 1):
-                return y, True
+                y = torch.cat([y, sampled_token], dim=1)
+                end = True
+                return y, end
             else:
                 y = torch.cat([y, sampled_token], dim=1)
 
+        return y, end
 
-        return y, False
     
-    def sample(self, logits, strategy="top-p", sample_arg=None):
+    def sample(self, logits, strategy, sample_arg=None):
         # Input
         # logits: [batch_size, midi_vocab_size]
         # Output
@@ -484,7 +459,7 @@ class DecoderLayer(nn.Module):
         # self.ln3 = nn.LayerNorm(embed_dim)
         # self.mha1 = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=config.dec_num_heads, dropout=config.attn_dropout, batch_first=True)
         # self.mha2 = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=config.dec_num_heads, dropout=config.attn_dropout, batch_first=True)
-        # self.register_buffer("causal_mask", torch.triu(torch.ones(config.max_target_len, config.max_target_len).bool(), diagonal=1))
+        self.register_buffer("causal_mask", torch.triu(torch.ones(config.max_target_len, config.max_target_len).bool(), diagonal=1))
         # self.ff = nn.Sequential(
         #     nn.Linear(embed_dim, ff_dim),
         #     nn.GELU(),
@@ -493,7 +468,7 @@ class DecoderLayer(nn.Module):
         # )
     
     def forward(self, x, enc_output):
-        x = self.decoder_layer(x,enc_output)
+        x = self.decoder_layer(x,enc_output,tgt_mask=self.causal_mask[:x.size(1),:x.size(1)] ,tgt_is_causal=True)
         # x = self.ln1(x)
         # x = x + self.mha1(x, x, x, is_causal=True, attn_mask=self.causal_mask[:x.size(1),:x.size(1)])[0]
         # x = x + self.mha2(self.ln2(x), enc_output, enc_output, is_causal=False)[0]
@@ -502,102 +477,103 @@ class DecoderLayer(nn.Module):
 
 
 if __name__ == "__main__":
-    from encoder_decoder_m import EncoderDecoderModule, EncoderDecoderConfig    
-    from dataset import DrumSlayerDataset
-    from torch.utils.data import DataLoader
-    import wandb
-    import lightning.pytorch as pl
-    import os
-    import datetime
-    from lightning.pytorch.loggers import WandbLogger
-    from lightning.pytorch.loggers import TensorBoardLogger
-    import torch
-    from torch.utils.data import Dataset
-    import numpy as np
-    import pretty_midi
-    import glob
+    print('good')
+    # from encoder_decoder_m import EncoderDecoderModule, EncoderDecoderConfig    
+    # from dataset import DrumSlayerDataset
+    # from torch.utils.data import DataLoader
+    # import wandb
+    # import lightning.pytorch as pl
+    # import os
+    # import datetime
+    # from lightning.pytorch.loggers import WandbLogger
+    # from lightning.pytorch.loggers import TensorBoardLogger
+    # import torch
+    # from torch.utils.data import Dataset
+    # import numpy as np
+    # import pretty_midi
+    # import glob
 
     
-    BATCH_SIZE = 2
-    NUM_WORKERS = 0
-    NUM_DEVICES = 0,1,2,3,4
-    # # Set the desired CUDA device number
-    # torch.cuda.set_device(7)
-    # device_number = torch.cuda.current_device()
-    # print(f"CUDA device number: {device_number}")
+    # BATCH_SIZE = 2
+    # NUM_WORKERS = 0
+    # NUM_DEVICES = 0,1,2,3,4
+    # # # Set the desired CUDA device number
+    # # torch.cuda.set_device(7)
+    # # device_number = torch.cuda.current_device()
+    # # print(f"CUDA device number: {device_number}")
 
-    EXP_NAME = f"{datetime.datetime.now().strftime('%Y-%m-%d-%H')}-lucky-seven"
+    # EXP_NAME = f"{datetime.datetime.now().strftime('%Y-%m-%d-%H')}-lucky-seven"
 
-    RESUME = False
-    WANDB = False
-    audio_encoding_type = "latents" # "latents", "codes", "z" (dim: 72, 9, 1024)
-    trained_dir = '/workspace/DrumTranscriber/ckpts'
-    # data_dir = '/workspace/DrumSlayer/generated_data/'
-    # data_dir = '/disk2/st_drums/generated_data/'
+    # RESUME = False
+    # WANDB = False
+    # audio_encoding_type = "latents" # "latents", "codes", "z" (dim: 72, 9, 1024)
     # trained_dir = '/workspace/DrumTranscriber/ckpts'
-    class TestDataset(Dataset):
-        def __init__(self, max_len=1472, audio_encoding_type = "codes"):
-            assert audio_encoding_type in ["latents", "codes", "z"] # dim: 72, 9, 1024
-            self.file_path =  '/disk2/st_drums/generated_data'
+    # # data_dir = '/workspace/DrumSlayer/generated_data/'
+    # # data_dir = '/disk2/st_drums/generated_data/'
+    # # trained_dir = '/workspace/DrumTranscriber/ckpts'
+    # class TestDataset(Dataset):
+    #     def __init__(self, max_len=1472, audio_encoding_type = "codes"):
+    #         assert audio_encoding_type in ["latents", "codes", "z"] # dim: 72, 9, 1024
+    #         self.file_path =  '/disk2/st_drums/generated_data'
 
-            self.max_len = max_len
-            self.encoding_type = audio_encoding_type
-            if self.encoding_type == 'codes':
-                self.size = [10, max_len] ##number
-        def __getitem__(self, idx):
-            # audio_rep = np.load(self.file_path + f"drum_data_{self.split}/mixed_loops/{idx}_{self.encoding_type}.npy") ## npy 생성 -> preprocess_dac.py
-            # audio_rep = rearrange(audio_rep, 'c d t -> t c d') # c: channel, d: dim, t: time
-            audio_rep = np.random.randint(0, 1024, (2, 9, 431))
-            audio_rep = rearrange(audio_rep, 'c d t -> t c d')
+    #         self.max_len = max_len
+    #         self.encoding_type = audio_encoding_type
+    #         if self.encoding_type == 'codes':
+    #             self.size = [10, max_len] ##number
+    #     def __getitem__(self, idx):
+    #         # audio_rep = np.load(self.file_path + f"drum_data_{self.split}/mixed_loops/{idx}_{self.encoding_type}.npy") ## npy 생성 -> preprocess_dac.py
+    #         # audio_rep = rearrange(audio_rep, 'c d t -> t c d') # c: channel, d: dim, t: time
+    #         audio_rep = np.random.randint(0, 1024, (2, 9, 431))
+    #         audio_rep = rearrange(audio_rep, 'c d t -> t c d')
             
-            # kick_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/kick_midi/kick_midi_{idx}.midi")
-            # snare_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/snare_midi/snare_midi_{idx}.midi")
-            # hihat_midi = pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/hihat_midi/hihat_midi_{idx}.midi")
-            # midi_tokens = self.tokenize_midi(kick_midi, snare_midi, hihat_midi) # (,152)
+    #         # kick_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/kick_midi/kick_midi_{idx}.midi")
+    #         # snare_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/snare_midi/snare_midi_{idx}.midi")
+    #         # hihat_midi = pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/hihat_midi/hihat_midi_{idx}.midi")
+    #         # midi_tokens = self.tokenize_midi(kick_midi, snare_midi, hihat_midi) # (,152)
             
-            audio_tokens = np.random.randint(0,1024, (self.size)) # (d:10, t:2737) # TODO : stereo d => 19
-            audio_tokens = rearrange(audio_tokens, 'd t -> t d') # (2737, 10)
-            return audio_rep, audio_tokens # midi_tokens
+    #         audio_tokens = np.random.randint(0,1024, (self.size)) # (d:10, t:2737) # TODO : stereo d => 19
+    #         audio_tokens = rearrange(audio_tokens, 'd t -> t d') # (2737, 10)
+    #         return audio_rep, audio_tokens # midi_tokens
 
-        def __len__(self):
-            return 1000
+    #     def __len__(self):
+    #         return 1000
 
-    def main():
-        os.makedirs(f"{trained_dir}/{EXP_NAME}/", exist_ok=True)    
-        # wandb.init(project="DrumTranscriber", name=EXP_NAME)
-        max_len = 1472 
-        audio_encoding_type = 'codes'
-        train_path = '/disk2/st_drums/generated_data'
-        train_dataset = TestDataset(max_len, audio_encoding_type)
-        train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+    # def main():
+    #     os.makedirs(f"{trained_dir}/{EXP_NAME}/", exist_ok=True)    
+    #     # wandb.init(project="DrumTranscriber", name=EXP_NAME)
+    #     max_len = 1472 
+    #     audio_encoding_type = 'codes'
+    #     train_path = '/disk2/st_drums/generated_data'
+    #     train_dataset = TestDataset(max_len, audio_encoding_type)
+    #     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
         
-        valid_dataset = TestDataset(max_len,  audio_encoding_type)
-        valid_dataloader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
+    #     valid_dataset = TestDataset(max_len,  audio_encoding_type)
+    #     valid_dataloader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
-        config = EncoderDecoderConfig(audio_rep = audio_encoding_type)
+    #     config = EncoderDecoderConfig(audio_rep = audio_encoding_type)
 
-        model = EncoderDecoderModule(config)
+    #     model = EncoderDecoderModule(config)
         
-        # checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        #     dirpath=f"{trained_dir}/{EXP_NAME}/",
-        #     # dirpath=f"/data5/kyungsu/ckpts/DrumSlayer/{EXP_NAME}/",
-        #     monitor="train_content_loss",
-        #     mode = "min",
-        #     every_n_steps=100,
-        #     filename = "{epoch}-{train_content_loss:.2f}",
-        #     verbose=True,
-        #     save_top_k=3,
-        #     save_last=False,
-        # )
-        if WANDB:
-            logger = WandbLogger(name=EXP_NAME, project="DrumSlayer")
-            trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', )
-        else:
-            logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
-            trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed',)
+    #     # checkpoint_callback = pl.callbacks.ModelCheckpoint(
+    #     #     dirpath=f"{trained_dir}/{EXP_NAME}/",
+    #     #     # dirpath=f"/data5/kyungsu/ckpts/DrumSlayer/{EXP_NAME}/",
+    #     #     monitor="train_content_loss",
+    #     #     mode = "min",
+    #     #     every_n_steps=100,
+    #     #     filename = "{epoch}-{train_content_loss:.2f}",
+    #     #     verbose=True,
+    #     #     save_top_k=3,
+    #     #     save_last=False,
+    #     # )
+    #     if WANDB:
+    #         logger = WandbLogger(name=EXP_NAME, project="DrumSlayer")
+    #         trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed', )
+    #     else:
+    #         logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
+    #         trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=1, precision='16-mixed',)
         
-        trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader)
-    # import os
-    # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-    main()
+    #     trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader)
+    # # import os
+    # # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    # # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+    # main()

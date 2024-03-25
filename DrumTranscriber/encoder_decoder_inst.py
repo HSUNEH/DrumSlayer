@@ -85,6 +85,7 @@ class EncoderDecoderModule(pl.LightningModule):
         audio_losses = []
         padding_losses = []
         padding_in_losses = []
+        y_pred, end= y_pred
         for j in range(len(dac_length)): #for j range(batch)
             for i in range(9): ##number
                 # audio_logits = y_pred[j,:dac_length[j]+1+8,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size]# (seq_len, v)
@@ -176,13 +177,13 @@ class EncoderDecoderModule(pl.LightningModule):
     def forward(self, batch): # evaluation step
         
         x, y, dac_length= batch
-        
+        y = rearrange(y, 'b v t -> b t v')
         ###### For Inference ######
-        y_pred = self.encoder_decoder(x)
+        y_pred = self.encoder_decoder(x) #(y_pred, end)
         
         ###### Loss Calculation ######
-        total_loss, padding_loss, audio_loss = self.loss_calculate(dac_length, y, y_pred)
-        return y_pred ,total_loss, padding_loss, audio_loss
+
+        return y_pred #,total_loss, padding_loss, audio_loss
 
 
 class EncoderDecoder(nn.Module):
