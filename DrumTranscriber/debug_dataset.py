@@ -4,11 +4,12 @@ num_sample = 15
 
 import shutil
 import os
+import shutil
 
 source_folder = '/disk2/st_drums/generated_data/drum_data_train/mixed_loops/' 
 destination_folder = '/disk2/st_drums/generated_data/drum_data_debug/mixed_loops/'
 if os.path.exists(destination_folder):
-    os.remove(destination_folder)
+    shutil.rmtree(destination_folder)
 
 os.mkdir(destination_folder)
 
@@ -26,7 +27,7 @@ if os.path.exists(destination_file):
 original_dir = '/disk2/st_drums/one_shots/train/kick/'
 destination_dir = '/disk2/st_drums/one_shots/debug/kick'
 if os.path.exists(destination_dir):
-    os.remove(destination_dir)
+    shutil.rmtree(destination_dir)
 
 os.mkdir(destination_dir)
 
