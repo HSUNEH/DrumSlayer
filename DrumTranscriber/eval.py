@@ -1,5 +1,6 @@
-from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
+# from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
 # from inst_decoder import InstDecoderModule, InstDecoderConfig
+from delay_decoder import DelayDecoderModule, DelayDecoderConfig
 from dataset_c import DrumSlayerDataset
 from torch.utils.data import DataLoader
 import wandb
@@ -262,8 +263,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_type', type=str, default='kick', help='ksh, kshm, kick, snare, hihat')
     parser.add_argument('--wandb', type=bool, default='False', help='True, False')
-    parser.add_argument('--layer_cut', type=int, default='1', help='enc(or dec)_num_layers // layer_cut')
-    parser.add_argument('--dim_cut', type=int, default='1', help='enc(or dec)_num_heads, _d_model // dim_cut')
+    parser.add_argument('--layer_cut', type=int, default='4', help='enc(or dec)_num_layers // layer_cut')
+    parser.add_argument('--dim_cut', type=int, default='4', help='enc(or dec)_num_heads, _d_model // dim_cut')
     parser.add_argument('--batch_size', type=int, default='1', help='batch size')
     args = parser.parse_args()
     
@@ -271,17 +272,19 @@ if __name__ == "__main__":
         ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-12-05-STDT-ksh-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
     elif args.train_type == 'kick':
         # ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-07-09-STDT-kick-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
-        ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-26-10-31-STDT-kick-1_1_3/train_total_loss=0.13-valid_total_loss=0.05.ckpt'
+        ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-26-15-52-STDT-kick-4_4_1/train_loss=0.41-valid_loss=0.00.ckpt'
     
     dac_model_path = dac.utils.download(model_type="44khz")
     dac_model = dac.DAC.load(dac_model_path) 
     dac_model.eval()
     # dac_model.cuda()
     
-    config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
-    model = EncoderDecoderModule(config)
+    # config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
+    # model = EncoderDecoderModule(config)
     # config = InstDecoderConfig(audio_rep = audio_encoding_type, args = args)
     # model = InstDecoderModule(config)
+    config = DelayDecoderConfig()
+    model = DelayDecoderModule(config)
     
     ckpt = torch.load(ckpt_dir, map_location='cpu')
     model.load_state_dict(ckpt['state_dict'])

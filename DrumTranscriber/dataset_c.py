@@ -159,29 +159,33 @@ class DrumSlayerDataset(Dataset):
         return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
 
 
+    # def tokenize_inst(self,inst_dac_l): ## origin
+    #     midi_vocab_size = 1000+128+4+1 # 1133
+    #     audio_vocab_size = 1024+4+1 # 1029
+
+    #     all_tokens_np = np.ones(((inst_dac_l.shape[0]),1+(345+8+1)*1), dtype=np.int32) * 2   # <PAD> token = 2 
+        
+    #     # all_tokens_np[0,1:len(midi_tokens)+1] = np.array(midi_tokens, dtype=np.int32)
+    #     all_tokens_np[:,0] = 0 # <SOS> token
+    #     dac_length = inst_dac_l.shape[1]
+    #     # interleaving pattern
+    #     for type, dac  in enumerate([inst_dac_l]):# with latents
+    #         for i, codes in enumerate(dac): # dac : (9, (max)431)
+    #             start = i+1+type*(345+8+1)
+    #             end = start + dac.shape[1]
+    #             all_tokens_np[i, start: end] = codes + 4 # +2000
+        
+    #     # for i in range(3):
+    #     #     all_tokens_np[:,(345+8+1)*i] = 3 # <SEP> token 
+
+    #     all_tokens_np[:,dac_length+9] = 1 # <EOS> token
+
+    #     return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
     def tokenize_inst(self,inst_dac_l):
-        midi_vocab_size = 1000+128+4+1 # 1133
-        audio_vocab_size = 1024+4+1 # 1029
-
-        all_tokens_np = np.ones(((inst_dac_l.shape[0]),1+(345+8+1)*1), dtype=np.int32) * 2   # <PAD> token = 2 
-        
-        # all_tokens_np[0,1:len(midi_tokens)+1] = np.array(midi_tokens, dtype=np.int32)
-        all_tokens_np[:,0] = 0 # <SOS> token
-        dac_length = inst_dac_l.shape[1]
-        # interleaving pattern
-        for type, dac  in enumerate([inst_dac_l]):# with latents
-            for i, codes in enumerate(dac): # dac : (9, (max)431)
-                start = i+1+type*(345+8+1)
-                end = start + dac.shape[1]
-                all_tokens_np[i, start: end] = codes + 4 # +2000
-        
-        # for i in range(3):
-        #     all_tokens_np[:,(345+8+1)*i] = 3 # <SEP> token 
-
-        all_tokens_np[:,dac_length+9] = 1 # <EOS> token
-
-        return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
-
+            all_tokens_np = np.zeros(((inst_dac_l.shape[0]),346), dtype=np.int32)
+            dac_length = inst_dac_l.shape[1]
+            all_tokens_np[:,1:1+dac_length] = inst_dac_l + 1
+            return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
 if __name__ == "__main__":
     data_dir = '/workspace/DrumSlayer/generated_data/'
     dataset = DrumSlayerDataset(data_dir, "train", "codes")

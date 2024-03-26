@@ -1,5 +1,6 @@
-from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
+# from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
 # from inst_decoder import InstDecoderModule, InstDecoderConfig
+from delay_decoder import DelayDecoderModule, DelayDecoderConfig
 from dataset_c import DrumSlayerDataset
 
 
@@ -70,12 +71,15 @@ def main(args):
     valid_dataset = DrumSlayerDataset(data_dir, "valid", audio_encoding_type, args)
     valid_dataloader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
-    config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
-    model = EncoderDecoderModule(config)
+    # config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
+    # model = EncoderDecoderModule(config)
     
     # config = InstDecoderConfig(audio_rep = audio_encoding_type, args = args)
     # model = InstDecoderModule(config)
 
+    config = DelayDecoderConfig()
+    model = DelayDecoderModule(config)
+    
 
     # # LOAD PRETRAINED MODEL
     # ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-26-04-43-STDT-kick-1_1_16/train_total_loss=3.27-valid_total_loss=3.49.ckpt'
@@ -90,17 +94,17 @@ def main(args):
     valid_n_steps = check_point_n_steps-1
     n_step_checkpoint = pl.callbacks.ModelCheckpoint(
         save_top_k=10,
-        monitor="train_total_loss",
+        monitor="train_loss",
         mode="min",
         dirpath=f"{trained_dir}/{EXP_NAME}/",
 
-        filename = "{train_total_loss:.2f}-{valid_total_loss:.2f}", 
+        filename = "{train_loss:.2f}-{valid_loss:.2f}", 
         every_n_epochs = 1
         # every_n_train_steps=check_point_n_steps, # n_steps
     )
     
     n_step_earlystop = pl.callbacks.EarlyStopping(                                                                                                                                                                    
-                        monitor="valid_total_loss",                                                                                                                                                                        
+                        monitor="val_loss",                                                                                                                                                                        
                         min_delta=0.00,                                                                                                                                                                            
                         patience=5,                                                                                                                                                                                
                         verbose=True,                                                                                                                                                                              
@@ -111,7 +115,7 @@ def main(args):
     if WANDB:
         logger = WandbLogger(name=EXP_NAME, project="DrumSlayer")
         # trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=5, precision='16-mixed', callbacks=[n_step_checkpoint, n_step_earlystop], strategy=ddp_strategy, val_check_interval=valid_n_steps)
-        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=10, precision='16-mixed', callbacks=[n_step_checkpoint], strategy=ddp_strategy, val_check_interval=valid_n_steps)
+        trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=10, precision='16-mixed', callbacks=[n_step_checkpoint], strategy=ddp_strategy, val_check_interval=1)
     else:
         # logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
         # trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=5, precision='16-mixed', callbacks=[n_step_checkpoint, n_step_earlystop], strategy=ddp_strategy, val_check_interval=valid_n_steps)
@@ -127,10 +131,10 @@ if __name__ == "__main__":
     parser.add_argument('--wandb', type=bool, default=False, help='True, False')
     parser.add_argument('--layer_cut', type=int, default='4', help='enc(or dec)_num_layers // layer_cut')
     parser.add_argument('--dim_cut', type=int, default='4', help='enc(or dec)_num_heads, _d_model // dim_cut')
-    parser.add_argument('--batch_size', type=int, default='3', help='batch size')
+    parser.add_argument('--batch_size', type=int, default='1', help='batch size')
     args = parser.parse_args()
     
-    NUM_DEVICES = 5,6,7
+    NUM_DEVICES = [2]
     NUM_WORKERS = 15
 
     main(args)

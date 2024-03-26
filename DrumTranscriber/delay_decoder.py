@@ -10,7 +10,7 @@ import pl_bolts
 from einops import rearrange
 
 class DelayDecoderConfig:
-    def __init__(self, positional_encoding=False, num_projection_layers=3, wandb=False, transcription_mode=False, midi_vocab_size=1000+128+4+1):
+    def __init__(self, positional_encoding=False, wandb=True, transcription_mode=False, midi_vocab_size=1000+128+4+1): # , num_projection_layers=3
         self.num_heads = 16
         self.num_blocks = 12
         self.embed_dim = 1024
@@ -18,11 +18,11 @@ class DelayDecoderConfig:
         self.embed_dropout = 0.1
         self.ff_dropout = 0.1
         self.midi_vocab_size = midi_vocab_size
-        self.audio_vocab_size = 1024 + 4
-        self.max_len = 1200
+        self.audio_vocab_size = 1024 + 1
+        self.max_len = 690
         self.positional_encoding = positional_encoding
-        assert num_projection_layers in [1, 2, 3]
-        self.num_projection_layers = num_projection_layers
+        # assert num_projection_layers in [1, 2, 3]
+        # self.num_projection_layers = num_projection_layers
         self.wandb = wandb
         self.transcription_mode = transcription_mode
 
@@ -33,83 +33,84 @@ class DelayDecoderModule(pl.LightningModule):
         self.midi_vocab_size = config.midi_vocab_size
         self.audio_vocab_size = config.audio_vocab_size
         self.decoder = DelayDecoder(config)
-        self.loss_functions = [nn.CrossEntropyLoss() for _ in range(10)]
+        self.loss_functions = [nn.CrossEntropyLoss() for _ in range(9)]
         self.save_hyperparameters()
     
     def training_step(self, batch, batch_idx):
-        clap_embedding, token = batch
-        token = token.long()
-        x = token[:, :-1]
-        target = token 
-        logits = self.decoder(clap_embedding, x) # logits.shape == (batch_size, seq_len, total_vocab_size)
-
-
-        # Calculate Loss.
-        midi_logits = rearrange(logits[:,:,:self.midi_vocab_size], 'b s v -> (b s) v')
-        midi_target = rearrange(target[:,:,0], 'b s -> (b s)')
-        midi_loss = self.loss_functions[0](midi_logits, midi_target)
-        audio_losses = []
-        for i in range(9):
-            audio_logits = rearrange(logits[:,:,self.midi_vocab_size+i*self.audio_vocab_size:self.midi_vocab_size+(i+1)*self.audio_vocab_size], 'b s v -> (b s) v')
-            audio_target = rearrange(target[:,:,i+1], 'b s -> (b s)')
-            audio_losses.append(self.loss_functions[i+1](audio_logits, audio_target))
-        total_loss = midi_loss + sum(audio_losses)
-        loss = total_loss / 10.0
-
-        # Calculate Accuracy.
-        midi_pred = torch.argmax(midi_logits, dim=-1)
-        midi_acc = torch.sum(midi_pred == midi_target).float() / torch.numel(midi_target)
-        audio_accs = []
-        for i in range(9):
-            audio_logits = rearrange(logits[:,:,self.midi_vocab_size+i*self.audio_vocab_size:self.midi_vocab_size+(i+1)*self.audio_vocab_size], 'b s v -> (b s) v')
-            audio_target = rearrange(target[:,:,i+1], 'b s -> (b s)')
-            audio_pred = torch.argmax(audio_logits, dim=-1)
-            audio_acc = torch.sum(audio_pred == audio_target).float() / torch.numel(audio_target)
-            audio_accs.append(audio_acc)
-        mean_acc = (midi_acc + sum(audio_accs)) / 10.0 
-        
-        if self.config.wandb:
-            wandb.log({"train_loss": loss.item(), "train_midi_loss": midi_loss.item(), "train_audio_loss": sum(audio_losses)/len(audio_losses),
-                    "train_midi_acc": midi_acc.item(), "train_audio_acc": sum(audio_accs)/len(audio_accs), "train_mean_acc": mean_acc.item()})
+        # loss, midi_loss, audio_losses, midi_acc, audio_accs, mean_acc = self.step(batch)
+        loss,  audio_losses,  audio_accs, mean_acc = self.step(batch)
+        # if self.config.wandb:
+        #     # wandb.log({"train_loss": loss.item(), "train_midi_loss": midi_loss.item(), "train_audio_loss": sum(audio_losses)/len(audio_losses),
+        #     #         "train_midi_acc": midi_acc.item(), "train_audio_acc": sum(audio_accs)/len(audio_accs), "train_mean_acc": mean_acc.item()})
+        #     wandb.log({"train_loss": loss.item(),  "train_audio_loss": sum(audio_losses)/len(audio_losses),
+        #              "train_audio_acc": sum(audio_accs)/len(audio_accs), "train_mean_acc": mean_acc.item()})
+        self.log("train_loss", loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("train_audio_loss", sum(audio_losses)/len(audio_losses), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("train_audio_acc", sum(audio_accs)/len(audio_accs), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("train_mean_acc", mean_acc.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         
         return loss
     
     def validation_step(self, batch, batch_idx):
-        clap_embedding, token = batch
-        token = token.long()
-        x = token[:, :-1]
-        target = token 
-        logits = self.decoder(clap_embedding, x)
+        # loss, midi_loss, audio_losses, midi_acc, audio_accs, mean_acc = self.step(batch)
+        loss,  audio_losses,  audio_accs, mean_acc = self.step(batch)
+        # if self.config.wandb:
+        #     # wandb.log({"val_loss": loss.item(), "val_midi_loss": midi_loss.item(), "val_audio_loss": sum(audio_losses)/len(audio_losses),
+        #     #         "val_midi_acc": midi_acc.item(), "val_audio_acc": sum(audio_accs)/len(audio_accs), "val_mean_acc": mean_acc.item()})
+        #     wandb.log({"val_loss": loss.item(),  "val_audio_loss": sum(audio_losses)/len(audio_losses),
+        #              "val_audio_acc": sum(audio_accs)/len(audio_accs), "val_mean_acc": mean_acc.item()})
+        self.log("val_loss", loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("val_audio_loss", sum(audio_losses)/len(audio_losses), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("val_audio_acc", sum(audio_accs)/len(audio_accs), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("val_mean_acc", mean_acc.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        return loss
+    def step(self, batch):
+        # clap_embedding, token = batch
+        """
+        clap_embedding.shape = (batch_size, 512)
+        x.shape = (batch_size, seq_len, 10)
+        """
+        # token = token.long()
+        # x = token[:, :-1,:]
+        # target = token 
+
+        x, y, dac_length = batch 
+        y = rearrange(y, 'b v t -> b t v')
         
+
+        x_l = x[:,:,0,:]
+        target = torch.cat((x_l[:,1:,:],y), dim=1)
+        logits = self.decoder(x_l, y[:,:-1,:])
+
         # Calculate Loss.
-        midi_logits = rearrange(logits[:,:,:self.midi_vocab_size], 'b s v -> (b s) v')
-        midi_target = rearrange(target[:,:,0], 'b s -> (b s)')
-        midi_loss = self.loss_functions[0](midi_logits, midi_target)
+        # midi_logits = rearrange(logits[:,:,:self.midi_vocab_size], 'b s v -> (b s) v')
+        # midi_target = rearrange(target[:,:,0], 'b s -> (b s)')
+        # midi_loss = self.loss_functions[0](midi_logits, midi_target)
         audio_losses = []
         for i in range(9):
-            audio_logits = rearrange(logits[:,:,self.midi_vocab_size+i*self.audio_vocab_size:self.midi_vocab_size+(i+1)*self.audio_vocab_size], 'b s v -> (b s) v')
-            audio_target = rearrange(target[:,:,i+1], 'b s -> (b s)')
-            audio_losses.append(self.loss_functions[i+1](audio_logits, audio_target))
-        total_loss = midi_loss + sum(audio_losses)
-        loss = total_loss / 10.0
+            # audio_logits = rearrange(logits[:,:,self.midi_vocab_size+i*self.audio_vocab_size:self.midi_vocab_size+(i+1)*self.audio_vocab_size], 'b s v -> (b s) v')
+            audio_logits = rearrange(logits[:,:,i*self.audio_vocab_size:(i+1)*self.audio_vocab_size], 'b s v -> b v s')
+            audio_target = rearrange(target[:,:,i], 'b s -> b s').long()
+            audio_losses.append(self.loss_functions[i](audio_logits, audio_target))
+        # total_loss = midi_loss + sum(audio_losses)
+        total_loss = sum(audio_losses)
+        loss = total_loss / 9.0 #10.0
 
         # Calculate Accuracy.
-        midi_pred = torch.argmax(midi_logits, dim=-1)
-        midi_acc = torch.sum(midi_pred == midi_target).float() / torch.numel(midi_target)
+        # midi_pred = torch.argmax(midi_logits, dim=-1)
+        # midi_acc = torch.sum(midi_pred == midi_target).float() / torch.numel(midi_target)
         audio_accs = []
         for i in range(9):
-            audio_logits = rearrange(logits[:,:,self.midi_vocab_size+i*self.audio_vocab_size:self.midi_vocab_size+(i+1)*self.audio_vocab_size], 'b s v -> (b s) v')
-            audio_target = rearrange(target[:,:,i+1], 'b s -> (b s)')
+            # audio_logits = rearrange(logits[:,:,self.midi_vocab_size+i*self.audio_vocab_size:self.midi_vocab_size+(i+1)*self.audio_vocab_size], 'b s v -> (b s) v')
+            audio_logits = rearrange(logits[:,:,i*self.audio_vocab_size:(i+1)*self.audio_vocab_size], 'b s v -> (b s) v')
+            audio_target = rearrange(target[:,:,i], 'b s -> (b s)')
             audio_pred = torch.argmax(audio_logits, dim=-1)
             audio_acc = torch.sum(audio_pred == audio_target).float() / torch.numel(audio_target)
             audio_accs.append(audio_acc)
-        mean_acc = (midi_acc + sum(audio_accs)) / 10.0 
-
-        if self.config.wandb:
-            wandb.log({"val_loss": loss.item(), "val_midi_loss": midi_loss.item(), "val_audio_loss": sum(audio_losses)/len(audio_losses),
-                    "val_midi_acc": midi_acc.item(), "val_audio_acc": sum(audio_accs)/len(audio_accs), "val_mean_acc": mean_acc.item()})
-
-        return loss
+        # mean_acc = (midi_acc + sum(audio_accs)) / 10.0 
+        mean_acc = ( sum(audio_accs)) / 9.0 
+        # return loss, midi_loss, audio_losses, midi_acc, audio_accs, mean_acc
+        return loss,  audio_losses,  audio_accs, mean_acc
     
     def configure_optimizers(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
@@ -122,14 +123,14 @@ class DelayDecoder(nn.Module):
         embed_dim = config.embed_dim
         self.max_len = config.max_len
         
-        if config.num_projection_layers == 1:
-            self.clap_projection = nn.Sequential(nn.Linear(512, embed_dim, bias=True))
-        elif config.num_projection_layers == 2:
-            self.clap_projection = nn.Sequential(nn.Linear(512, 1024, bias=True), nn.ReLU(), nn.Linear(1024, embed_dim, bias=True))
-        elif config.num_projection_layers == 3:
-            self.clap_projection = nn.Sequential(nn.Linear(512, 1024, bias=True), nn.ReLU(), nn.Linear(1024, 1024, bias=True), nn.ReLU(), nn.Linear(1024, embed_dim, bias=True))
-        else:
-            raise ValueError("invalid number of projection layers")
+        # if config.num_projection_layers == 1:
+        #     self.clap_projection = nn.Sequential(nn.Linear(512, embed_dim, bias=True))
+        # elif config.num_projection_layers == 2:
+        #     self.clap_projection = nn.Sequential(nn.Linear(512, 1024, bias=True), nn.ReLU(), nn.Linear(1024, embed_dim, bias=True))
+        # elif config.num_projection_layers == 3:
+        #     self.clap_projection = nn.Sequential(nn.Linear(512, 1024, bias=True), nn.ReLU(), nn.Linear(1024, 1024, bias=True), nn.ReLU(), nn.Linear(1024, embed_dim, bias=True))
+        # else:
+        #     raise ValueError("invalid number of projection layers")
         
         if self.config.transcription_mode:
             self.sos_tok_embed = nn.Embedding(1, embed_dim)    
@@ -142,42 +143,51 @@ class DelayDecoder(nn.Module):
             *[Block(config) for _ in range(config.num_blocks)]
         )
         self.ln = nn.LayerNorm(embed_dim)
-        self.fc = nn.Linear(embed_dim, config.midi_vocab_size+9*config.audio_vocab_size)
-    
-    def forward(self, clap_embedding, x):
+        self.fc = nn.Linear(embed_dim, 9*config.audio_vocab_size)
+        
+    def forward(self, x_l, y):
         """
         clap_embedding.shape = (batch_size, 512)
         x.shape = (batch_size, seq_len, 10)
         """
-        batch_size = x.size(0)
-        seq_len = x.size(1)+1
-        assert seq_len <= self.max_len, "sequence longer than model capacity"
-        # If transcription mode, first token is sos token.
-        if self.config.transcription_mode:
-            first_embedding = self.sos_tok_embed(torch.zeros(batch_size, 1).long().cuda())
-        # Else, first token is clap embedding.
-        else:
-            first_embedding = self.clap_projection(clap_embedding).unsqueeze(1) # -> (batch_size, 1, embed_dim)
 
-        if x.size(1) == 0:
-            embedding = first_embedding
-        else:
-            tok_embedding = self.midi_tok_embed(x[:,:,0])
-            for i in range(9):
-                audio_tok_embedding = self.audio_tok_embed[i](x[:,:,i+1])
-                tok_embedding = tok_embedding + audio_tok_embedding # -> (batch_size, seq_len, embed_dim)
-            embedding = torch.cat((first_embedding, tok_embedding), dim=1)
+        # batch_size = x.size(0)
+        # seq_len = x.size(1)+1
+        # assert seq_len <= self.max_len, "sequence longer than model capacity"
+        # # If transcription mode, first token is sos token.
+        # if self.config.transcription_mode:
+        #     first_embedding = self.sos_tok_embed(torch.zeros(batch_size, 1).long().cuda())
+        # # Else, first token is clap embedding.
+        # else:
+        #     first_embedding = self.clap_projection(clap_embedding).unsqueeze(1) # -> (batch_size, 1, embed_dim)
+        for i in range(9):
+            if i == 0:
+                first_embedding = self.audio_tok_embed[i](x_l[:,:,i].long())
+            else:
+                first_embedding = first_embedding + self.audio_tok_embed[i](x_l[:,:,i].long())
+        
+        # if x.size(1) == 0:
+        #     embedding = first_embedding
+        # else:
+            # tok_embedding = self.midi_tok_embed(x[:,:,0])
+        for i in range(9):
+            if i == 0:
+                tok_embedding = self.audio_tok_embed[i](y[:,:,i].long())
+            else:
+                tok_embedding = tok_embedding + self.audio_tok_embed[i](y[:,:,i].long()) # -> (batch_size, seq_len, embed_dim)
+        embedding = torch.cat((first_embedding, tok_embedding), dim=1)
 
-        if self.config.positional_encoding:
-            embedding = embedding + self.pos_embed[:, :seq_len, :]
+        #TODO : positional encoding
+        # if self.config.positional_encoding:
+        #     embedding = embedding + self.pos_embed[:, :seq_len, :]
 
         # tok_embedding.shape == (batch_size, seq_len, embed_dim)
-        x = self.dropout(embedding)
-        x = self.blocks(x)
-        x = self.ln(x)
-        x = self.fc(x)
-        # x.shape == (batch_size, seq_len, vocab_size)
-        return x
+        output = self.dropout(embedding)
+        output = self.blocks(output)
+        output = self.ln(output)
+        output = self.fc(output)
+        # output.shape == (batch_size, seq_len, vocab_size)
+        return output
      
 class Block(nn.Module):
     def __init__(self, config):

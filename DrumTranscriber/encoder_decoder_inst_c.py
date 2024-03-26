@@ -107,50 +107,56 @@ class EncoderDecoderModule(pl.LightningModule):
             padding_in_losses = []
                         
             total_losses = []
-            # #### RULE 0 #### : Loss for all tokens
-            # y_pred_ = y_pred.view((y_pred.shape[0]* y_pred.shape[1]* 9), 1028)
-            # y_target = rearrange(y[:,1:,:], 'b t d -> (b t d)') # 9
-            # total_losses.append(self.total_loss(y_pred_, y_target.long()))
-            # # RULE 0
-            # total_loss = sum(total_losses)
+            #### RULE 0 #### : Loss for all tokens
+
+            y_pred_ = y_pred.view(y_pred.shape[0],y_pred.shape[1],9, 1028)
+            y_pred_ = rearrange(y_pred_, 'b t d v -> b v t d')
+            y_target = y[:,1:,:].long() # b t d 
+
+            total_losses.append(self.total_loss(y_pred_, y_target))
+
+            # RULE 0
+            total_loss = sum(total_losses)
             
             #### RULE 1 #### : Loss for contents, padding
-            for j in range(len(dac_length)): #for j range(batch)
+            for i in range(len(dac_length)): #for i range(batch)
                 
-                audio_logits = y_pred[j,:dac_length[j]+1+8,:].view(((dac_length[j]+1+8)* 9),1028)# (seq_len, v)
-                audio_target = y[j,1:dac_length[j]+1+8+1,:].reshape(((dac_length[j]+1+8)* 9)).long() # 4*2738 # end token 까지 포함
+                audio_logits = y_pred[i,:dac_length[i]+1+8,:].view(dac_length[i]+1+8,9,1028)    # (seq_len, d, v)
+                audio_logits = rearrange(audio_logits, 't d v -> t v d') # (seq_len, v, d)
+                audio_target = y[i,1:dac_length[i]+1+8+1,:].long() # (seq_len, d)
                 audio_losses.append(self.audio_loss(audio_logits, audio_target))
                 
-                padding_logits = y_pred[j,dac_length[j]+1+8:,:].view((y_pred.shape[1]-(dac_length[j]+1+8))*9,1028)
-                padding_target = y[j,dac_length[j]+1+8+1:,:].reshape(((y_pred.shape[1]-(dac_length[j]+1+8))* 9)).long()
+                padding_logits = y_pred[i,dac_length[i]+1+8:,:].view((y_pred.shape[1]-(dac_length[i]+1+8)),9,1028)  # (seq_len, d, v)
+                padding_logits = rearrange(padding_logits, 't d v -> t v d') # (seq_len, v, d)
+                padding_target = y[i,dac_length[i]+1+8+1:,:].long() # (seq_len, d)
                 if padding_logits.shape[0] != 0: 
                     padding_losses.append(self.padding_loss(padding_logits, padding_target))
                 # len(audio_losses) = 4 / len(padding_losses) = 4
 
-        
-            # ##### RULE 2 #### : Loss for contents, padding, padding_in
-            # for j in range(len(dac_length)): #for j range(batch)
 
-            #     audio_logits = y_pred[j,1:dac_length[j]+1,:].view((dac_length[j])* 9,1028)# (seq_len, v)
-            #     audio_target = y[j,1:dac_length[j]+1,:].reshape((dac_length[j])* 9).long() # 4*2738 # end token 까지 포함
+            # ##### RULE 2 #### : Loss for contents, padding, padding_in
+            # for i in range(len(dac_length)): #for i range(batch)
+
+            #     audio_logits = y_pred[i,1:dac_length[i]+1,:].view((dac_length[i])* 9,1028)# (seq_len, v)
+            #     audio_target = y[i,1:dac_length[i]+1,:].reshape((dac_length[i])* 9).long() # 4*2738 # end token 까지 포함
             #     audio_losses.append(self.audio_loss(audio_logits, audio_target))
                 
-            #     padding_in_logits_l = y_pred[j,:1,:].view((1)* 9,1028)# (seq_len, v)
-            #     padding_in_target_l = y[j,1:,:].reshape((1)* 9).long() # 4*2738 # end token 까지 포함
+            #     padding_in_logits_l = y_pred[i,:1,:].view((1)* 9,1028)# (seq_len, v)
+            #     padding_in_target_l = y[i,1:,:].reshape((1)* 9).long() # 4*2738 # end token 까지 포함
             #     if i != 0:
             #         padding_in_losses.append(self.padding_loss(padding_in_logits_l, padding_in_target_l))
                 
-            #     padding_in_logits_r = y_pred[j,dac_length[j]+1:dac_length[j]+1+8,:].view((8)* 9,1028)# (seq_len, v)
-            #     padding_in_target_r = y[j,dac_length[j]+1:dac_length[j]+1+8,:].reshape((8)* 9).long() # 4*2738 # end token 까지 포함
+            #     padding_in_logits_r = y_pred[i,dac_length[i]+1:dac_length[i]+1+8,:].view((8)* 9,1028)# (seq_len, v)
+            #     padding_in_target_r = y[i,dac_length[i]+1:dac_length[i]+1+8,:].reshape((8)* 9).long() # 4*2738 # end token 까지 포함
             #     padding_in_losses.append(self.padding_loss(padding_in_logits_r, padding_in_target_r))
                 
-            #     padding_logits = y_pred[j,dac_length[j]+1+8:,:].view((y_pred.shape[1]-(dac_length[j]+1+8))*9,1028)
-            #     padding_target = y[j,dac_length[j]+1+8+1:,:].reshape(((y_pred.shape[1]-(dac_length[j]+1+8))* 9)).long()
+            #     padding_logits = y_pred[i,dac_length[i]+1+8:,:].view((y_pred.shape[1]-(dac_length[i]+1+8))*9,1028)
+            #     padding_target = y[i,dac_length[i]+1+8+1:,:].reshape(((y_pred.shape[1]-(dac_length[i]+1+8))* 9)).long()
             #     if padding_logits.shape[0] != 0:
             #         padding_losses.append(self.padding_loss(padding_logits, padding_target))
             
             # RULE 1,2
-            total_loss = sum(audio_losses) + sum(padding_losses)
+            # total_loss = sum(audio_losses) + sum(padding_losses)
             
             
         return total_loss, sum(padding_losses) , sum(audio_losses) ##number
@@ -166,7 +172,7 @@ class EncoderDecoderModule(pl.LightningModule):
         # y = rearrange(y, 'b v t -> b t v') # (4, 1472, 10)
         # y_pred = self.encoder_decoder(x, y[:,:-1]) # (batch_size, seq_len, total_vocab_size) torch.Size([4, 1471, 10396])
         
-        
+    
         ###### For Inference ######
         y_pred = self.encoder_decoder(x)
         # y_pred : torch.Size([1, 355, 9])    
@@ -190,7 +196,7 @@ class EncoderDecoder(nn.Module):
         else: 
             self.dac_projection_layer = nn.Linear(config.dec_d_model,  config.audio_vocab_size * 9)
         self.midi_embedding_layer = nn.Embedding(config.midi_vocab_size, config.dec_d_model)
-        self.audio_embedding_layer = nn.ModuleList([nn.Embedding(1024, config.dec_d_model) for _ in range(9)]) ##number
+        self.audio_embedding_layer = nn.ModuleList([nn.Embedding(1024,config.dec_d_model) for _ in range(9)]) ##number
         self.inst_embedding_layer = nn.ModuleList([nn.Embedding(config.audio_vocab_size, config.dec_d_model) for _ in range(9)]) ##number
     
     def forward(self, x, y=None, strategy="greedy", sample_arg=None):
@@ -262,7 +268,7 @@ class EncoderDecoder(nn.Module):
         end = False
         for i in tqdm(range(seq_len)):
             for j in range(9):
-                try :  
+                try : 
                     audio_tok_embedding = self.audio_embedding_layer[j](y[:,:,j]) # torch.Size([1, 1, 384])
                 except:
                     breakpoint()

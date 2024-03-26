@@ -119,16 +119,18 @@ class InstDecoderModule(pl.LightningModule):
             x_l = x[:,:,0,:].long()
             y = torch.cat((x_l, y[:,:,:]), dim=1)
             
+            breakpoint()
             #### RULE 0 #### : Loss for all tokens
-            y_pred_ = y_pred.reshape((y_pred.shape[0]* y_pred.shape[1]* 9), 1028)
-            y_target = y[:,1:,:].reshape(-1)
-            
+            y_pred_ = y_pred.view(y_pred.shape[0],y_pred.shape[1],9, 1028)
+            y_pred_ = rearrange(y_pred_, 'b t d v -> b v t d')
+            y_target = y[:,1:,:].long() # b t d 
             total_losses.append(self.total_loss(y_pred_, y_target.long()))
             
             #### Only Contents #### 
             for i in range(len(dac_length)):
                 y_pred_ = y_pred[i,344:dac_length[i]+1+8+345,:]
-                y_pred_ = y_pred_.reshape((y_pred_.shape[0]* 9), 1028) # batch , len, 1028*9 -> batch * len * 9 , 1028
+                y_pred_ = y_pred_.reshape(y_pred_.shape[0],9, 1028) # batch , len, 1028*9 -> batch * len * 9 , 1028
+                y_pred_ = rearrange(y_pred_, 't d v -> t v d')
                 y_target = y[i,345:dac_length[i]+1+8+345+1,:]
                 y_target = y_target.reshape(-1) # batch, len, 9 -> batch*len *9
             
