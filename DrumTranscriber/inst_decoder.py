@@ -77,7 +77,7 @@ class InstDecoderModule(pl.LightningModule):
         self.log("train_padding_loss", padding_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("train_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("train_dac_loss", dac_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
-        return audio_losses 
+        return (audio_losses + padding_loss)
     
     def validation_step(self, batch, batch_idx):
         total_loss, padding_loss, audio_losses, dac_losses = self.step(batch)
@@ -86,7 +86,7 @@ class InstDecoderModule(pl.LightningModule):
         self.log("valid_padding_loss", padding_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("valid_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("valid_dac_loss", dac_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
-        return audio_losses
+        return (audio_losses + padding_loss)
            
     def configure_optimizers(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)

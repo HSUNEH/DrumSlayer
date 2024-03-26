@@ -49,7 +49,7 @@ audio_encoding_type = "codes" # "latents", "codes", "z" (dim: 72, 9, 1024)
 
 # data_dir = '/workspace/DrumSlayer/generated_data/'
 data_dir = '/disk2/st_drums/generated_data/'
-trained_dir = './ckpt/'
+trained_dir = '/workspace/ckpts'
 
 def main(args):
     
