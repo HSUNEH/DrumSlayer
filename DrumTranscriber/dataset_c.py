@@ -14,11 +14,12 @@ from einops import rearrange
 class DrumSlayerDataset(Dataset):
     def __init__(self, file_path, split, audio_encoding_type, args, max_len=152):
         assert audio_encoding_type in ["latents", "codes", "z"] # dim: 72, 9, 1024
-        self.file_path = file_path
+        self.file_path = "/data5/drumslayer/"
         self.split = split
         self.max_len = max_len
         self.encoding_type = audio_encoding_type
-        self.num_data = len(glob.glob(file_path + f"drum_data_{split}/mixed_loops/*.wav"))
+        self.num_data = len(glob.glob(self.file_path + f"drum_data_{split}/mixed_loops/*.wav"))
+        x = glob.glob(self.file_path + f"drum_data_{split}/mixed_loops/*.wav")
         self.train_type = args.train_type
         
     def __getitem__(self, idx):
@@ -43,7 +44,7 @@ class DrumSlayerDataset(Dataset):
             return oneshot_name
 
         # Usage
-        oneshot_path = '/disk2/st_drums/one_shots/'
+        oneshot_path = '/data5/drumslayer/'
         if self.train_type == "kick":
             kick_name = load_dac(self.file_path + f"drum_data_{self.split}/kickShotList.txt", idx)
             kick_name = kick_name.replace('.wav', f'_{self.encoding_type}.npy')
@@ -160,26 +161,9 @@ class DrumSlayerDataset(Dataset):
 
 
     def tokenize_inst(self,inst_dac_l):
-        midi_vocab_size = 1000+128+4+1 # 1133
-        audio_vocab_size = 1024+4+1 # 1029
-
-        all_tokens_np = np.ones(((inst_dac_l.shape[0]),1+(345+8+1)*1), dtype=np.int32) * 2   # <PAD> token = 2 
-        
-        # all_tokens_np[0,1:len(midi_tokens)+1] = np.array(midi_tokens, dtype=np.int32)
-        all_tokens_np[:,0] = 0 # <SOS> token
+        all_tokens_np = np.zeros(((inst_dac_l.shape[0]),348), dtype=np.int32)
         dac_length = inst_dac_l.shape[1]
-        # interleaving pattern
-        for type, dac  in enumerate([inst_dac_l]):# with latents
-            for i, codes in enumerate(dac): # dac : (9, (max)431)
-                start = i+1+type*(345+8+1)
-                end = start + dac.shape[1]
-                all_tokens_np[i, start: end] = codes + 4 # +2000
-        
-        # for i in range(3):
-        #     all_tokens_np[:,(345+8+1)*i] = 3 # <SEP> token 
-
-        all_tokens_np[:,dac_length+9] = 1 # <EOS> token
-
+        all_tokens_np[:,1:1+dac_length] = inst_dac_l + 1
         return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
 
 if __name__ == "__main__":
