@@ -14,7 +14,7 @@ from einops import rearrange
 class DrumSlayerDataset(Dataset):
     def __init__(self, file_path, split, audio_encoding_type, args, max_len=152):
         assert audio_encoding_type in ["latents", "codes", "z"] # dim: 72, 9, 1024
-        self.file_path = "/data5/drumslayer/"
+        self.file_path = "/disk2/st_drums/generated_data/"
         self.split = split
         self.max_len = max_len
         self.encoding_type = audio_encoding_type
@@ -44,7 +44,7 @@ class DrumSlayerDataset(Dataset):
             return oneshot_name
 
         # Usage
-        oneshot_path = '/data5/drumslayer/'
+        oneshot_path = '/disk2/st_drums/one_shots/'
         if self.train_type == "kick":
             kick_name = load_dac(self.file_path + f"drum_data_{self.split}/kickShotList.txt", idx)
             kick_name = kick_name.replace('.wav', f'_{self.encoding_type}.npy')
