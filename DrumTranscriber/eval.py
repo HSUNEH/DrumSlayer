@@ -1,4 +1,5 @@
 from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
+# from inst_decoder import InstDecoderModule, InstDecoderConfig
 from dataset_c import DrumSlayerDataset
 from torch.utils.data import DataLoader
 import wandb
@@ -137,7 +138,8 @@ def inst_generate(test_dataloader, inst):
         y_target = rearrange(y[:,:,:], 'b t d -> b d t')
         # y_pred, end, loss, padding_losses, padding_in_losses, audio_losses = model(batch) # torch.Size([1, seq_len, 9]), False
         y_pred, end = model(batch) # torch.Size([1, seq_len, 9]), False
-
+        breakpoint()
+        y_pred = y_pred[:,345:,:]
         # Audio part only -> inst_tokens
         try:
             end_token_idx = torch.where(y_pred == 1)[1][0]
@@ -269,7 +271,7 @@ if __name__ == "__main__":
         ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-12-05-STDT-ksh-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
     elif args.train_type == 'kick':
         # ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-07-09-STDT-kick-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
-        ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-25-09-11-STDT-kick-1_1_16/train_total_loss=2.85-valid_total_loss=49.55.ckpt'
+        ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-26-10-31-STDT-kick-1_1_3/train_total_loss=0.13-valid_total_loss=0.05.ckpt'
     
     dac_model_path = dac.utils.download(model_type="44khz")
     dac_model = dac.DAC.load(dac_model_path) 
@@ -278,13 +280,16 @@ if __name__ == "__main__":
     
     config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
     model = EncoderDecoderModule(config)
+    # config = InstDecoderConfig(audio_rep = audio_encoding_type, args = args)
+    # model = InstDecoderModule(config)
+    
     ckpt = torch.load(ckpt_dir, map_location='cpu')
     model.load_state_dict(ckpt['state_dict'])
     model.eval()
     # model.cuda(7)
     # device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
 
-    data_type = "train"
+    data_type = "debug"
     test_dataset = DrumSlayerDataset(data_dir, data_type, audio_encoding_type, args)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) # x: audio dac, y : target token 
 

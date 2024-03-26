@@ -24,6 +24,7 @@ class DrumSlayerDataset(Dataset):
     def __getitem__(self, idx):
         audio_rep = np.load(self.file_path + f"drum_data_{self.split}/mixed_loops/{idx}_{self.encoding_type}.npy") ## dac npy 생성 -> preprocess_dac.py
         audio_rep = rearrange(audio_rep, 's d t -> t s d')
+        # audio_rep = audio_rep + 4
         
         # audio_rep = rearrange(audio_rep, 'c d t -> d t c') # c: channel, d: dim, t: time
         # audio_rep_l, _ = self.tokenize_inst(audio_rep[:,:,0])

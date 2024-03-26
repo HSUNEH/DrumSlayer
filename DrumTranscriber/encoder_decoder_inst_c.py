@@ -190,7 +190,7 @@ class EncoderDecoder(nn.Module):
         else: 
             self.dac_projection_layer = nn.Linear(config.dec_d_model,  config.audio_vocab_size * 9)
         self.midi_embedding_layer = nn.Embedding(config.midi_vocab_size, config.dec_d_model)
-        self.audio_embedding_layer = nn.ModuleList([nn.Embedding(config.audio_vocab_size, config.dec_d_model) for _ in range(9)]) ##number
+        self.audio_embedding_layer = nn.ModuleList([nn.Embedding(1024, config.dec_d_model) for _ in range(9)]) ##number
         self.inst_embedding_layer = nn.ModuleList([nn.Embedding(config.audio_vocab_size, config.dec_d_model) for _ in range(9)]) ##number
     
     def forward(self, x, y=None, strategy="greedy", sample_arg=None):
@@ -262,7 +262,10 @@ class EncoderDecoder(nn.Module):
         end = False
         for i in tqdm(range(seq_len)):
             for j in range(9):
-                audio_tok_embedding = self.audio_embedding_layer[j](y[:,:,j]) # torch.Size([1, 1, 384])
+                try :  
+                    audio_tok_embedding = self.audio_embedding_layer[j](y[:,:,j]) # torch.Size([1, 1, 384])
+                except:
+                    breakpoint()
                 if j == 0:
                     tok_embedding = audio_tok_embedding
                 tok_embedding = tok_embedding+ audio_tok_embedding
