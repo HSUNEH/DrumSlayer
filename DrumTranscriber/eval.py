@@ -140,21 +140,26 @@ def inst_generate(test_dataloader, inst):
         y_target = rearrange(y[:,:,:], 'b t d -> b d t')
         # y_pred, end, loss, padding_losses, padding_in_losses, audio_losses = model(batch) # torch.Size([1, seq_len, 9]), False
         y_pred, end = model(batch) # torch.Size([1, seq_len, 9]), False
-        y_pred = y_pred[:,346:,:]
-        # Audio part only -> inst_tokens
-        try:
-            end_token_idx = torch.where(y_pred == 0)[1][0]
-            inst_tokens = y_pred[:,:end_token_idx,:]          #torch.Size([1, 353, 9])
-        except:
-            end_token_idx = y_pred.shape[1]
-            inst_tokens = y_pred[:,:,:]
 
-        inst_tokens = inst_tokens[:, :end_token_idx, :]   #torch.Size([1, 345, 9])
+        if not torch.all(y_pred[:,353,:] == 0):
+            print('Start Token FUCKED')
+        if not torch.all(y_pred[:,-1,:] == 0):
+            print('End Token FUCKED')
+        inst_tokens = y_pred[:,354:-1,:]
+        # Audio part only -> inst_tokens
         inst_tokens = inst_tokens - 1
 
+        dac_len = inst_tokens.shape[1]-8
 
+        # interleaving pattern 풀기
 
-        # slicing하여 [1(batch_size), seq_len, 9] 형태로 만들기
+        for i in range(1,9): # dac : (9, (max)431) / codes : (s, d)
+            inst_tokens[:,:dac_len,i] = inst_tokens[:,i:i+dac_len,i] 
+
+            
+        inst_tokens = inst_tokens[:,:-8,:]
+       
+        
         for _, codes in enumerate([inst_tokens]):
             inst_codes = codes.permute(0,2,1) # torch.Size([1, 9, seq_len])
             latent = dac_model.quantizer.from_codes(inst_codes)[0]
@@ -174,7 +179,6 @@ def inst_generate(test_dataloader, inst):
         new_filename = f'{idx}_{inst}_t.wav'
         shutil.copy(inst_file, os.path.join(destination_dir, new_filename))
 
-        breakpoint()
 
 
 # def main(ckpt_dir, data_dir, result_dir,audio_encoding_type, args):
@@ -262,7 +266,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
 
-    ckpt_dir = '/workspace/ckpts/03-27-17-17-STDT-kick-1_1_3/train_audio_loss=0.28-valid_audio_loss=0.00-step=153.ckpt'
+    ckpt_dir = '/workspace/ckpts/03-27-17-39-STDT-kick-1_1_3/train_audio_loss=0.18-valid_audio_loss=0.00-step=267.ckpt'
     
     dac_model_path = dac.utils.download(model_type="44khz")
     dac_model = dac.DAC.load(dac_model_path) 
