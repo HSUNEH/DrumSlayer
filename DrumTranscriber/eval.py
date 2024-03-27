@@ -262,7 +262,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
 
-    ckpt_dir = '/workspace/ckpts/03-27-16-39-STDT-kick-1_1_3/epoch=90-train_audio_loss=0.04-valid_audio_loss=0.00.ckpt'
+    ckpt_dir = '/workspace/ckpts/03-27-17-17-STDT-kick-1_1_3/train_audio_loss=0.28-valid_audio_loss=0.00-step=153.ckpt'
     
     dac_model_path = dac.utils.download(model_type="44khz")
     dac_model = dac.DAC.load(dac_model_path) 

@@ -130,7 +130,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default='3', help='batch size')
     args = parser.parse_args()
     
-    NUM_DEVICES = [2] 
+    NUM_DEVICES = [4]
     NUM_WORKERS =  0
 
     main(args)

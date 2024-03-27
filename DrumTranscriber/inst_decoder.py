@@ -44,7 +44,7 @@ class InstDecoderConfig:
             self.audio_rep_dim = 9
         else:
             raise ValueError("Invalid audio_rep type")
-        self.max_target_len = 345+355
+        # self.max_target_len = 345+355
         self.max_len = 345+354
         self.padding_loss_lambda = 0.1
 
@@ -70,22 +70,24 @@ class InstDecoderModule(pl.LightningModule):
             # self.padding_in_loss_functions_l = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)]
             # self.padding_in_loss_functions_r = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)]
     def training_step(self, batch, batch_idx):
-        total_loss, padding_loss, audio_losses, dac_losses = self.step(batch)
+        total_loss, padding_loss, audio_losses, dac_losses, audio_acc = self.step(batch)
 
         self.log("train_total_loss", total_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         # if self.config.train_type == 'kshm':
         self.log("train_padding_loss", padding_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("train_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("train_dac_loss", dac_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("train_audio_acc", audio_acc.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         return audio_losses 
     
     def validation_step(self, batch, batch_idx):
-        total_loss, padding_loss, audio_losses, dac_losses = self.step(batch)
+        total_loss, padding_loss, audio_losses, dac_losses, audio_acc = self.step(batch)
         self.log("valid_total_loss", total_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         # if self.config.train_type == 'kshm':
         self.log("valid_padding_loss", padding_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("valid_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("valid_dac_loss", dac_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("valid_audio_acc", audio_acc.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         return audio_losses
            
     def configure_optimizers(self):
@@ -125,36 +127,58 @@ class InstDecoderModule(pl.LightningModule):
             target = xy[:,1:,:].long() # b t d 
             total_loss = self.total_loss(pred_, target.long())
             
+            #### Audio Dac #### conditional dac
+            dac_losses = []
+            dac_logits = pred[:,:344,:]
+            dac_logits = dac_logits.view(dac_logits.shape[0],dac_logits.shape[1],9, 1025)
+            dac_logits = rearrange(dac_logits, 'b t d v -> b v t d')
+            dac_target = xy[:,1:345,:]
+            dac_losses.append(self.dac_loss(dac_logits, dac_target.long()))
+            
             #### Only Contents #### 
             for i in range(len(dac_length)):
-                pred_i = pred[i,344:344+dac_length[i],:]
-                pred_i = pred_i.reshape((pred_i.shape[0]* 9), 1025) # batch , len, 1028*9 -> batch * len * 9 , 1028
-                y_target = xy[i,345:345+dac_length[i],:]
-                y_target = y_target.reshape(-1) # batch, len, 9 -> batch*len *9
-                audio_losses.append(self.audio_loss(pred_i, y_target.long()))
+                audio_logits = pred[i,344:344+dac_length[i]+2,:]
+                audio_logits = audio_logits.view(audio_logits.shape[0],9, 1025)
+                audio_logits = rearrange(audio_logits, 't d v -> t v d')
+                audio_target = xy[i,345:345+dac_length[i]+2,:]
+                audio_losses.append(self.audio_loss(audio_logits, audio_target.long()))
             
             #### Only Padding ####
             for i in range(len(dac_length)): #for i range(batch)
-                padding_logits = pred[i,dac_length[i]+1+345:,:].reshape((pred.shape[1]-(dac_length[i]+1+345))*9,1025)
-                padding_target = xy[i,dac_length[i]+1+345+1:,:].reshape(((xy.shape[1]-(dac_length[i]+1+345+1))* 9)).long()
-                padding_losses.append(self.padding_loss(padding_logits, padding_target))
+                padding_logits = pred[i,344+dac_length[i]+2:,:]
+                padding_logits = padding_logits.view(padding_logits.shape[0],9, 1025)
+                padding_logits = rearrange(padding_logits, 't d v -> t v d')
+                padding_target = xy[i,345+dac_length[i]+2:,:]
+                if padding_logits.shape[0] != 0:
+                    padding_losses.append(self.padding_loss(padding_logits, padding_target))
                 # if padding_logits.shape[0] != 0: 
                 #     padding_losses.append(self.padding_loss(padding_logits, padding_target))
                 # len(audio_losses) = 4 / len(padding_losses) = 4
             
-            #### Audio Dac ####
-            dac_losses = []
-            dac_logits = pred[:,:345,:]
-            dac_logits = dac_logits.reshape((dac_logits.shape[0]* dac_logits.shape[1]* 9), 1025)
-            dac_target = xy[:,1:345+1,:].reshape(-1)
-            
-            dac_losses.append(self.dac_loss(dac_logits, dac_target.long()))
-            
+            # Calculate Accuracy.
+            audio_accs = []
+            for i in range(len(dac_length)):
+                # for i in range(9):
+                    # acc_logits = rearrange(pred[:,352:352+dac_length[b]+8+2,i*self.config.audio_vocab_size:(i+1)*self.config.audio_vocab_size], 'b s v -> (b s) v')
+                acc_logits = pred[i,344:344+dac_length[i]+2,:]
+                acc_logits = acc_logits.view(acc_logits.shape[0],9, 1025)
+                acc_logits = rearrange(acc_logits, 's d v -> s v d')
+                
+                # acc_target = rearrange(target[:,352:352+dac_length[b]+8+2,i], 'b s -> (b s)')
+                acc_target = xy[i,345:345+dac_length[i]+2,:] # s d
+
+                acc_pred = torch.argmax(acc_logits, dim=1)
+                audio_acc = torch.sum(acc_pred == acc_target).float() / torch.numel(acc_target)
+                audio_accs.append(audio_acc)
+
+        mean_acc = (sum(audio_accs)) /len(dac_length)
+
+        breakpoint()
         padding_loss = sum(padding_losses)/len(padding_losses)
         audio_loss = sum(audio_losses)/len(audio_losses)
         dac_loss = sum(dac_losses)/len(dac_losses)
-        
-        return total_loss, padding_loss, audio_loss, dac_loss    
+
+        return total_loss, padding_loss, audio_loss, dac_loss ,mean_acc 
 
     def forward(self, batch): # evaluation step
         
@@ -265,7 +289,7 @@ class InstDecoder(nn.Module):
             
             # top-p sampling
             sampled_token = self.sample(output[:,344+i,:], strategy=strategy, sample_arg=sample_arg) #[batch_size, 1, 9 or 10]
-            if torch.all(sampled_token == 1):
+            if torch.all(sampled_token == 0):
                 x_l = torch.cat([x_l, sampled_token], dim=1)
                 end = True
                 return x_l, end

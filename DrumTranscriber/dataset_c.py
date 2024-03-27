@@ -12,7 +12,7 @@ import pretty_midi
 from einops import rearrange
 
 class DrumSlayerDataset(Dataset):
-    def __init__(self, file_path, split, audio_encoding_type, args, max_len=152):
+    def __init__(self, file_path, split, audio_encoding_type, args, max_len=345):
         assert audio_encoding_type in ["latents", "codes", "z"] # dim: 72, 9, 1024
         self.file_path = "/disk2/st_drums/generated_data/"
         self.split = split
@@ -161,7 +161,7 @@ class DrumSlayerDataset(Dataset):
 
 
     def tokenize_inst(self,inst_dac_l):
-        all_tokens_np = np.zeros(((inst_dac_l.shape[0]),348), dtype=np.int32)
+        all_tokens_np = np.zeros(((inst_dac_l.shape[0]),self.max_len+2), dtype=np.int32)
         dac_length = inst_dac_l.shape[1]
         all_tokens_np[:,1:1+dac_length] = inst_dac_l + 1
         return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
