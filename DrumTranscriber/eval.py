@@ -135,12 +135,13 @@ def ksh_generate(test_dataloader):
 def inst_generate(test_dataloader, inst):
     for idx, batch in tqdm(enumerate(test_dataloader)):
         x, y, batch_length  = batch # x : torch.Size([1, 345, 2, 9]) , y : torch.Size([1, 9, seq_len])
-        batch = x.cuda() , y.cuda(), batch_length
+        if gpu:
+            batch = x.cuda() , y.cuda(), batch_length
         end = False
         y_target = rearrange(y[:,:,:], 'b t d -> b d t')
         # y_pred, end, loss, padding_losses, padding_in_losses, audio_losses = model(batch) # torch.Size([1, seq_len, 9]), False
         y_pred, end = model(batch) # torch.Size([1, seq_len, 9]), False
-
+        breakpoint()
         if torch.any(y_pred[:, 345, :] != 0):
             print('Start Token FUCKED')
         if end == False:
@@ -160,19 +161,17 @@ def inst_generate(test_dataloader, inst):
         inst_tokens = inst_tokens - 1
 
         # slicing하여 [1(batch_size), seq_len, 9] 형태로 만들기
-
+        breakpoint()
         for _, codes in enumerate([inst_tokens]):
-            print(codes.min(), codes.max())
             inst_codes = codes.permute(0,2,1) # torch.Size([1, 9, seq_len])
             latent = dac_model.quantizer.from_codes(inst_codes)[0]
             audio = dac_model.decode(latent)[0]
-            audio = audio.detach().cpu().numpy().astype(np.float32)
+            audio = audio.detach().numpy().astype(np.float32)
 
             output_dir = result_dir + f'{inst}/{idx}_{inst}.wav'
 
             os.makedirs(os.path.dirname(output_dir), exist_ok=True) #(1, 18432)
             scipy.io.wavfile.write(output_dir, 44100, audio.T)
-
 
         inst_name = load_dac(f'/disk2/st_drums/generated_data/drum_data_{data_type}/{inst}ShotList.txt', idx)
 
@@ -270,13 +269,14 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default='1', help='batch size')
     args = parser.parse_args()
     
-
-    ckpt_dir = '/workspace/ckpts/03-26-17-47-STDT-kick-1_1_16/train_total_loss=11.60-valid_total_loss=11.99.ckpt'
+    gpu = True
+    ckpt_dir = '/workspace/ckpts/03-27-15-29-STDT-kick-1_1_16/train_audio_loss=0.40-valid_audio_loss=0.00.ckpt'
     
     dac_model = DAC()
     dac_model_path = dac.utils.download(model_type="44khz")
     dac_model = dac.DAC.load(dac_model_path) 
-    dac_model.cuda()
+    if gpu :
+        dac_model.cuda()
     dac_model.eval()
     
     # config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
@@ -286,11 +286,12 @@ if __name__ == "__main__":
     
     ckpt = torch.load(ckpt_dir, map_location='cpu')
     model.load_state_dict(ckpt['state_dict'])
-    model.cuda()
+    if gpu:
+        model.cuda()
     model.eval()
     # device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
 
-    data_type = "debug"
+    data_type = "train"
     test_dataset = DrumSlayerDataset(data_dir, data_type, audio_encoding_type, args)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) # x: audio dac, y : target token 
 

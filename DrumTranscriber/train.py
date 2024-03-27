@@ -78,7 +78,7 @@ def main(args):
 
 
     # LOAD PRETRAINED MODEL
-    ckpt_dir = '/workspace/ckpts/03-26-17-47-STDT-kick-1_1_16/train_total_loss=11.60-valid_total_loss=11.99.ckpt'
+    ckpt_dir = '/workspace/ckpts/03-27-15-29-STDT-kick-1_1_16/train_audio_loss=0.40-valid_audio_loss=0.00.ckpt'
     ckpt = torch.load(ckpt_dir, map_location='cpu')
     model.load_state_dict(ckpt['state_dict'])
     
@@ -86,8 +86,8 @@ def main(args):
     ddp_strategy = pl.strategies.DDPStrategy(find_unused_parameters=True)
 
     
-    check_point_n_steps = 2000
-    valid_n_steps = check_point_n_steps-1
+    check_point_n_steps = 1500
+    valid_n_steps = check_point_n_steps
     n_step_checkpoint = pl.callbacks.ModelCheckpoint(
         save_top_k=10,
         monitor="train_audio_loss",
@@ -98,7 +98,7 @@ def main(args):
         every_n_epochs = 1
         # every_n_train_steps=check_point_n_steps, # n_steps
     )
-
+    
     n_step_earlystop = pl.callbacks.EarlyStopping(                                                                                                                                                                    
                         monitor="valid_audio_loss",                                                                                                                                                                        
                         min_delta=0.00,                                                                                                                                                                            
@@ -116,10 +116,11 @@ def main(args):
     else:
         # logger = TensorBoardLogger(save_dir=f"{trained_dir}/{EXP_NAME}/logs", name=EXP_NAME)
         # trainer = pl.Trainer(accelerator="gpu", logger=logger, devices=NUM_DEVICES, max_epochs=5, precision='16-mixed', callbacks=[n_step_checkpoint, n_step_earlystop], strategy=ddp_strategy, val_check_interval=valid_n_steps)
-        # trainer = pl.Trainer(accelerator="gpu", devices=NUM_DEVICES, max_epochs=150, precision='16-mixed',  callbacks=[n_step_checkpoint], strategy=ddp_strategy)
-        trainer = pl.Trainer(accelerator="gpu", devices=NUM_DEVICES, max_epochs=150, precision='16-mixed', callbacks=[n_step_checkpoint], strategy=ddp_strategy)
+        trainer = pl.Trainer(accelerator="gpu", devices=NUM_DEVICES, max_epochs=150, precision='16-mixed',  callbacks=[n_step_checkpoint], strategy=ddp_strategy)
+        # trainer = pl.Trainer(accelerator="gpu", devices=NUM_DEVICES, max_epochs=150, precision='16-mixed', strategy=ddp_strategy)
 
     trainer.fit(model=model, train_dataloaders=debug_dataloader)
+    # trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=valid_dataloader)
 
 
 if __name__ == "__main__":
@@ -128,11 +129,12 @@ if __name__ == "__main__":
     parser.add_argument('--wandb', type=bool, default=False, help='True, False')
     parser.add_argument('--layer_cut', type=int, default='1', help='enc(or dec)_num_layers // layer_cut')
     parser.add_argument('--dim_cut', type=int, default='1', help='enc(or dec)_num_heads, _d_model // dim_cut')
-    parser.add_argument('--batch_size', type=int, default='5', help='batch size')
+    parser.add_argument('--batch_size', type=int, default='16', help='batch size')
     args = parser.parse_args()
     
     NUM_DEVICES = [2]
     NUM_WORKERS = 15
 
     main(args)
+
     #export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7

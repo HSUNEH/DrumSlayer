@@ -24,12 +24,13 @@ class DrumSlayerDataset(Dataset):
         
     def __getitem__(self, idx):
         audio_rep = np.load(self.file_path + f"drum_data_{self.split}/mixed_loops/{idx}_{self.encoding_type}.npy") ## dac npy 생성 -> preprocess_dac.py
-        audio_rep = rearrange(audio_rep, 's d t -> t s d')
-        # audio_rep = audio_rep + 4
+        # audio_rep = rearrange(audio_rep, 's d t -> t s d')
         
-        # audio_rep = rearrange(audio_rep, 'c d t -> d t c') # c: channel, d: dim, t: time
-        # audio_rep_l, _ = self.tokenize_inst(audio_rep[:,:,0])
-        # audio_rep_l = rearrange(audio_rep_l, 'd t -> t d') 
+        audio_rep = rearrange(audio_rep, 'c d t -> d t c') # c: channel, d: dim, t: time
+        audio_rep_l, _ = self.tokenize_inst(audio_rep[:,:,0])
+        audio_rep_l = rearrange(audio_rep_l, 'd t -> t d')
+        audio_rep_l = audio_rep_l[1:-1,:]
+        
         if self.train_type == "kshm":
             kick_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/kick_midi/kick_midi_{idx}.midi")
             snare_midi =  pretty_midi.PrettyMIDI(self.file_path + f"drum_data_{self.split}/generated_midi/snare_midi/snare_midi_{idx}.midi")
@@ -78,7 +79,7 @@ class DrumSlayerDataset(Dataset):
             audio_tokens, dac_length = self.tokenize_inst(hihat_dac_l)
 
 
-        return audio_rep, audio_tokens, dac_length
+        return audio_rep_l, audio_tokens, dac_length
 
     def __len__(self):
         return self.num_data
@@ -159,12 +160,33 @@ class DrumSlayerDataset(Dataset):
 
         return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
 
-
     def tokenize_inst(self,inst_dac_l):
-        all_tokens_np = np.zeros(((inst_dac_l.shape[0]),347), dtype=np.int32)
+        midi_vocab_size = 1000+128+4+1 # 1133
+        audio_vocab_size = 1024+4+1 # 1029
+
+        all_tokens_np = np.zeros(((inst_dac_l.shape[0]),1+345+8+1), dtype=np.int32)  
+        
         dac_length = inst_dac_l.shape[1]
-        all_tokens_np[:,1:1+dac_length] = inst_dac_l + 1
-        return all_tokens_np, dac_length 
+        # interleaving pattern
+        for type, dac  in enumerate([inst_dac_l]):# with latents
+            for i, codes in enumerate(dac): # dac : (9, (max)431)
+                start = i+1+type*(345+8+1)
+                end = start + dac.shape[1]
+                all_tokens_np[i, start: end] = codes + 1 # +2000
+        
+
+        # for i in range(3):
+        #     all_tokens_np[:,(345+8+1)*i] = 3 # <SEP> token 
+
+
+
+        return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
+
+    # def tokenize_inst(self,inst_dac_l):
+    #     all_tokens_np = np.zeros(((inst_dac_l.shape[0]),347), dtype=np.int32)
+    #     dac_length = inst_dac_l.shape[1]
+    #     all_tokens_np[:,1:1+dac_length] = inst_dac_l + 1
+    #     return all_tokens_np, dac_length 
 
 if __name__ == "__main__":
     data_dir = '/workspace/DrumSlayer/generated_data/'
