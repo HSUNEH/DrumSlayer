@@ -1,6 +1,6 @@
 # from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
 # from inst_decoder import InstDecoderModule, InstDecoderConfig
-from delay_decoder import DelayDecoderModule, DelayDecoderConfig
+from delay_decoder_c import DelayDecoderModule, DelayDecoderConfig
 from dataset_c import DrumSlayerDataset
 from torch.utils.data import DataLoader
 import wandb
