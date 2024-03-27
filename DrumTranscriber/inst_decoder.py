@@ -83,7 +83,7 @@ class InstDecoderModule(pl.LightningModule):
         total_loss, padding_loss, audio_losses, dac_losses = self.step(batch)
         self.log("valid_total_loss", total_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         # if self.config.train_type == 'kshm':
-        self.log("valid_padding_loss", padding_loss.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
+        self.log("valid_padding_loss", padding_loss.item(), on_step=True, on_och=True, logger=True, sync_dist=True)
         self.log("valid_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("valid_dac_loss", dac_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         return (audio_losses + padding_loss)
@@ -265,7 +265,7 @@ class InstDecoder(nn.Module):
             
             # top-p sampling
             sampled_token = self.sample(output[:,344+i,:], strategy=strategy, sample_arg=sample_arg) #[batch_size, 1, 9 or 10]
-            if torch.all(sampled_token == 1):
+            if torch.all(sampled_token == 0) and i != 0:
                 x_l = torch.cat([x_l, sampled_token], dim=1)
                 end = True
                 return x_l, end

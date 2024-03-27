@@ -77,10 +77,10 @@ def main(args):
     model = InstDecoderModule(config)
 
 
-    # # LOAD PRETRAINED MODEL
-    # ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-26-04-43-STDT-kick-1_1_16/train_total_loss=3.27-valid_total_loss=3.49.ckpt'
-    # ckpt = torch.load(ckpt_dir, map_location='cpu')
-    # model.load_state_dict(ckpt['state_dict'])
+    # LOAD PRETRAINED MODEL
+    ckpt_dir = '/workspace/ckpts/03-26-16-34-STDT-kick-1_1_16/last.ckpt.ckpt'
+    ckpt = torch.load(ckpt_dir, map_location='cpu')
+    model.load_state_dict(ckpt['state_dict'])
     
     
     ddp_strategy = pl.strategies.DDPStrategy(find_unused_parameters=True)
@@ -89,17 +89,18 @@ def main(args):
     check_point_n_steps = 2000
     valid_n_steps = check_point_n_steps-1
     n_step_checkpoint = pl.callbacks.ModelCheckpoint(
-        save_top_k=1,
-        monitor="train_total_loss",
+        save_top_k=10,
+        monitor="train_audio_loss",
         mode="min",
         dirpath=f"{trained_dir}/{EXP_NAME}/",
-        filename = "last.ckpt", 
+        filename = "{train_audio_loss:.2f}-{valid_audio_loss:.2f}", 
+
         every_n_epochs = 1
         # every_n_train_steps=check_point_n_steps, # n_steps
     )
     
     n_step_earlystop = pl.callbacks.EarlyStopping(                                                                                                                                                                    
-                        monitor="valid_total_loss",                                                                                                                                                                        
+                        monitor="valid_audio_loss",                                                                                                                                                                        
                         min_delta=0.00,                                                                                                                                                                            
                         patience=5,                                                                                                                                                                                
                         verbose=True,                                                                                                                                                                              

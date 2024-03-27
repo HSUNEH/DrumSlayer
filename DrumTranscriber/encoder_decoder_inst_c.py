@@ -30,9 +30,9 @@ class EncoderDecoderConfig:
         # Other hparams.
         self.midi_vocab_size = 1000+128+4+3 ## <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types. 1134
         if self.train_type == 'kshm' or self.train_type == 'ksh':
-            self.audio_vocab_size = 1024+4+1 # 1024 dac tokens + <start>,<end>,<pad>,<sep>
+            self.audio_vocab_size = 1024+1 # 1024 dac tokens + <start>,<end>,<pad>,<sep>
         else:
-            self.audio_vocab_size = 1024+4   # 1024 dac tokens + <start>,<end>,<pad>
+            self.audio_vocab_size = 1024+1  # 1024 dac tokens + <start>,<end>,<pad>
         # self.dac_vocab_size = 4+1000+128+1025 # 2157 # <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types. + 1025 dac tokens
         # self.audio_rep = "latents" # "latents", "codes", "z"
         self.audio_rep = audio_rep
@@ -44,7 +44,7 @@ class EncoderDecoderConfig:
             self.audio_rep_dim = 9
         else:
             raise ValueError("Invalid audio_rep type")
-        self.max_target_len = 1472
+        self.max_target_len = 345+355
         self.padding_loss_lambda = 0.1
         
         if self.train_type not in ['ksh', 'kick', 'snare', 'hihat', 'kshm'] :

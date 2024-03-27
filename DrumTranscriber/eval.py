@@ -1,6 +1,7 @@
-from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
+# from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
 from inst_decoder import InstDecoderModule, InstDecoderConfig
 from dataset_c import DrumSlayerDataset
+
 from torch.utils.data import DataLoader
 import wandb
 import lightning.pytorch as pl
@@ -160,7 +161,7 @@ def inst_generate(test_dataloader, inst):
             print(codes.min(), codes.max())
             inst_codes = codes.permute(0,2,1) # torch.Size([1, 9, seq_len])
             latent = dac_model.quantizer.from_codes(inst_codes)[0]
-            audio = dac_model.decode(latent)['audio']
+            audio = dac_model.decode(latent)[0]
             audio = audio.detach().cpu().numpy().astype(np.float32)
 
             output_dir = result_dir + f'{inst}/{idx}_{inst}.wav'
@@ -169,14 +170,16 @@ def inst_generate(test_dataloader, inst):
             scipy.io.wavfile.write(output_dir, 44100, audio.T)
 
 
-        inst_name = load_dac(f'/data5/drumslayer/drum_data_{data_type}/{inst}ShotList.txt', idx)
+        inst_name = load_dac(f'/disk2/st_drums/generated_data/drum_data_{data_type}/{inst}ShotList.txt', idx)
+
         
-        destination_dir = f'./results/{inst}/'
-        inst_file = f'/data5/drumslayer/{data_type}/kick/'+ inst_name
+        destination_dir = f'/disk2/st_drums/results/{inst}/'
+        inst_file = f'/disk2/st_drums/one_shots/{data_type}/kick/'+ inst_name
+
         new_filename = f'{idx}_{inst}_t.wav'
         shutil.copy(inst_file, os.path.join(destination_dir, new_filename))
 
-        # breakpoint()
+        breakpoint()
 
 
 # def main(ckpt_dir, data_dir, result_dir,audio_encoding_type, args):
@@ -253,27 +256,24 @@ def inst_generate(test_dataloader, inst):
 if __name__ == "__main__":
     
     data_dir = '/disk2/st_drums/generated_data/'
-    result_dir = './results/'
+    result_dir = '/disk2/st_drums/results/'
     audio_encoding_type = 'codes'
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_type', type=str, default='kick', help='ksh, kshm, kick, snare, hihat')
     parser.add_argument('--wandb', type=bool, default='False', help='True, False')
-    parser.add_argument('--layer_cut', type=int, default='4', help='enc(or dec)_num_layers // layer_cut')
-    parser.add_argument('--dim_cut', type=int, default='4', help='enc(or dec)_num_heads, _d_model // dim_cut')
+    parser.add_argument('--layer_cut', type=int, default='1', help='enc(or dec)_num_layers // layer_cut')
+    parser.add_argument('--dim_cut', type=int, default='1', help='enc(or dec)_num_heads, _d_model // dim_cut')
     parser.add_argument('--batch_size', type=int, default='1', help='batch size')
     args = parser.parse_args()
     
-    if args.train_type == 'ksh':
-        ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-12-05-STDT-ksh-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
-    elif args.train_type == 'kick':
-        # ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-07-09-STDT-kick-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
-        ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-26-10-31-STDT-kick-1_1_3/train_total_loss=0.13-valid_total_loss=0.05.ckpt'
-        ckpt_dir = '/home/kyungsukim/git/DrumSlayer/DrumTranscriber/ckpt/03-27-00-24-STDT-kick-4_4_3/last.ckpt.ckpt'
+
+    ckpt_dir = '/workspace/ckpts/03-26-17-47-STDT-kick-1_1_16/train_total_loss=11.60-valid_total_loss=11.99.ckpt'
     
     dac_model = DAC()
-    dac_model = load_model(dac.__model_version__)
-    dac_model.eval()
+    dac_model_path = dac.utils.download(model_type="44khz")
+    dac_model = dac.DAC.load(dac_model_path) 
     dac_model.cuda()
+    dac_model.eval()
     
     # config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
     # model = EncoderDecoderModule(config)
@@ -295,3 +295,4 @@ if __name__ == "__main__":
     elif args.train_type == 'kick' or args.train_type == 'snare' or args.train_type == 'hihat':
         inst_generate(test_dataloader, args.train_type)
     
+    #export CUDA_VISIBLE_DEVICES=2
