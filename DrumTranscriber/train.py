@@ -131,7 +131,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     NUM_DEVICES = 2,3,4,5
-    NUM_WORKERS =  0
+    NUM_WORKERS = 15
 
     main(args)
     #export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
