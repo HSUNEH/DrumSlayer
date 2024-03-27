@@ -133,7 +133,6 @@ def ksh_generate(test_dataloader):
   
 
 def inst_generate(test_dataloader, inst):
-
     for idx, batch in tqdm(enumerate(test_dataloader)):
         x, y, batch_length  = batch # x : torch.Size([1, 345, 2, 9]) , y : torch.Size([1, 9, seq_len])
         batch = x.cuda() , y.cuda(), batch_length
@@ -141,8 +140,16 @@ def inst_generate(test_dataloader, inst):
         y_target = rearrange(y[:,:,:], 'b t d -> b d t')
         # y_pred, end, loss, padding_losses, padding_in_losses, audio_losses = model(batch) # torch.Size([1, seq_len, 9]), False
         y_pred, end = model(batch) # torch.Size([1, seq_len, 9]), False
+
+        if torch.any(y_pred[:, 345, :] != 0):
+            print('Start Token FUCKED')
+        if end == False:
+            print('NOT ENDED')
+            
         y_pred = y_pred[:,346:,:]
+        
         # Audio part only -> inst_tokens
+        
         try:
             end_token_idx = torch.where(y_pred == 0)[1][0]
             inst_tokens = y_pred[:,:end_token_idx,:]          #torch.Size([1, 353, 9])
@@ -150,10 +157,7 @@ def inst_generate(test_dataloader, inst):
             end_token_idx = y_pred.shape[1]
             inst_tokens = y_pred[:,:,:]
 
-        inst_tokens = inst_tokens[:, :end_token_idx, :]   #torch.Size([1, 345, 9])
         inst_tokens = inst_tokens - 1
-
-
 
         # slicing하여 [1(batch_size), seq_len, 9] 형태로 만들기
 

@@ -161,10 +161,10 @@ class DrumSlayerDataset(Dataset):
 
 
     def tokenize_inst(self,inst_dac_l):
-        all_tokens_np = np.zeros(((inst_dac_l.shape[0]),348), dtype=np.int32)
+        all_tokens_np = np.zeros(((inst_dac_l.shape[0]),347), dtype=np.int32)
         dac_length = inst_dac_l.shape[1]
         all_tokens_np[:,1:1+dac_length] = inst_dac_l + 1
-        return all_tokens_np, dac_length # (10, 1472) # sep, eos at 152, 592, 1032, 1472
+        return all_tokens_np, dac_length 
 
 if __name__ == "__main__":
     data_dir = '/workspace/DrumSlayer/generated_data/'

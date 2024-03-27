@@ -29,10 +29,7 @@ class InstDecoderConfig:
         self.ff_dropout = 0.1
         # Other hparams.
         self.midi_vocab_size = 1000+128+4+3 ## <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types. 1134
-        if self.train_type == 'kshm' or self.train_type == 'ksh':
-            self.audio_vocab_size = 1024+1 # 1024 dac tokens + <start>,<end>,<pad>,<sep>
-        else:
-            self.audio_vocab_size = 1024+1   # 1024 dac tokens + <start>,<end>,<pad>
+        self.audio_vocab_size = 1024+1   # 1024 dac tokens + <start>,<end>,<pad>
         # self.dac_vocab_size = 4+1000+128+1025 # 2157 # <start>,<end>,<pad>,<sep> 1000 time bins, 128 velocity bins, 3 drum types. + 1025 dac tokens
         # self.audio_rep = "latents" # "latents", "codes", "z"
         self.audio_rep = audio_rep
@@ -44,8 +41,8 @@ class InstDecoderConfig:
             self.audio_rep_dim = 9
         else:
             raise ValueError("Invalid audio_rep type")
-        self.max_target_len = 345+355
-        self.max_len = 345+354
+        # self.max_target_len = 345+355
+        self.max_len = 345+347
         self.padding_loss_lambda = 0.1
 
         if self.train_type not in ['ksh', 'kick', 'snare', 'hihat', 'kshm'] :
@@ -57,14 +54,15 @@ class InstDecoderModule(pl.LightningModule):
         super().__init__()
         self.config = config
         self.inst_decoder = InstDecoder(config)
+
         # self.loss_function = self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim+1)] 
         if self.config.train_type == 'kshm':
             self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim+1)] 
         else: 
-            self.total_loss = nn.CrossEntropyLoss()
-            self.audio_loss = nn.CrossEntropyLoss()
+            self.total_loss =   nn.CrossEntropyLoss()
+            self.audio_loss =   nn.CrossEntropyLoss(reduction = None)
             self.padding_loss = nn.CrossEntropyLoss()
-            self.dac_loss= nn.CrossEntropyLoss()
+            self.dac_loss=      nn.CrossEntropyLoss()
             # self.loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)] 
             # self.padding_loss_functions = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)] 
             # self.padding_in_loss_functions_l = [nn.CrossEntropyLoss() for _ in range(config.audio_rep_dim)]
@@ -87,7 +85,7 @@ class InstDecoderModule(pl.LightningModule):
         self.log("valid_audio_loss", audio_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         self.log("valid_dac_loss", dac_losses.item(), on_step=True, on_epoch=True, logger=True, sync_dist=True)
         return (audio_losses + padding_loss)
-           
+        
     def configure_optimizers(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return self.optimizer
@@ -118,38 +116,57 @@ class InstDecoderModule(pl.LightningModule):
             
             x_l = x[:,:,0,:].long()
             xy = torch.cat((x_l, y[:,:,:]), dim=1)
+            target = xy[:,1:,:].long() # b t d 
+            # x_l :     b, 345, d
+            # y :       b, 347, d 
+            # xy :      b, 692, d
+            # target :  b, 691, d
+            # pred :    b, 691, d*v
             
             #### All Tokens ####
             pred_ = pred.view(pred.shape[0],pred.shape[1],9, 1025)
-            pred_ = rearrange(pred_, 'b t d v -> b v t d')
-            target = xy[:,1:,:].long() # b t d 
+            pred_ = rearrange(pred_, 'b s d v -> b v s d')
+            
             total_loss = self.total_loss(pred_, target.long())
             
+            #### Audio Dac #### condition
+            dac_losses = []
+            dac_logits = pred[:,:344,:] # b s d*v
+            dac_logits = dac_logits.view(dac_logits.shape[0], dac_logits.shape[1], 9, 1025)
+            dac_logits = rearrange(dac_logits, 'b s d v -> b v s d')
+            dac_target = xy[:,1:345,:] # b s d 
+            dac_losses.append(self.dac_loss(dac_logits, dac_target.long()))
+
             #### Only Contents #### 
             for i in range(len(dac_length)):
-                pred_i = pred[i,344:344+dac_length[i],:]
-                pred_i = pred_i.reshape((pred_i.shape[0]* 9), 1025) # batch , len, 1028*9 -> batch * len * 9 , 1028
-                y_target = xy[i,345:345+dac_length[i],:]
-                y_target = y_target.reshape(-1) # batch, len, 9 -> batch*len *9
-                audio_losses.append(self.audio_loss(pred_i, y_target.long()))
-            
+                audio_logits = pred[i,344:344+dac_length[i]+2,:]
+                audio_logits = audio_logits.view(audio_logits.shape[0],9, 1025)
+                audio_logits = rearrange(audio_logits, 's d v -> s v d')
+                audio_target = xy[i,345:345+dac_length[i]+2,:] # s d
+                audio_losses.append(self.audio_loss(audio_logits, audio_target.long()))
+            breakpoint()
             #### Only Padding ####
             for i in range(len(dac_length)): #for i range(batch)
-                padding_logits = pred[i,dac_length[i]+1+345:,:].reshape((pred.shape[1]-(dac_length[i]+1+345))*9,1025)
-                padding_target = xy[i,dac_length[i]+1+345+1:,:].reshape(((xy.shape[1]-(dac_length[i]+1+345+1))* 9)).long()
-                padding_losses.append(self.padding_loss(padding_logits, padding_target))
-                # if padding_logits.shape[0] != 0: 
-                #     padding_losses.append(self.padding_loss(padding_logits, padding_target))
-                # len(audio_losses) = 4 / len(padding_losses) = 4
+                padding_logits = pred[i,dac_length[i]+344+2:,:]
+                padding_logits = padding_logits.view(padding_logits.shape[0],9, 1025)
+                padding_logits = rearrange(padding_logits, 's d v -> s v d')
+                padding_target = xy[i,dac_length[i]+345+2:,:] # s d 
+                padding_losses.append(self.padding_loss(padding_logits, padding_target.long()))
+
             
-            #### Audio Dac ####
-            dac_losses = []
-            dac_logits = pred[:,:345,:]
-            dac_logits = dac_logits.reshape((dac_logits.shape[0]* dac_logits.shape[1]* 9), 1025)
-            dac_target = xy[:,1:345+1,:].reshape(-1)
-            
-            dac_losses.append(self.dac_loss(dac_logits, dac_target.long()))
-            
+            # #### Calculate Accuracy. ####
+            # # midi_pred = torch.argmax(midi_logits, dim=-1)
+            # # midi_acc = torch.sum(midi_pred == midi_target).float() / torch.numel(midi_target)
+            # audio_accs = []
+            # for i in range(9):
+            #     audio_logits
+            #     audio_logits = rearrange(logits[:,:,self.midi_vocab_size+i*self.audio_vocab_size:self.midi_vocab_size+(i+1)*self.audio_vocab_size], 'b s v -> (b s) v')
+            #     audio_target = rearrange(target[:,:,i+1], 'b s -> (b s)')
+            #     audio_pred = torch.argmax(audio_logits, dim=-1)
+            #     audio_acc = torch.sum(audio_pred == audio_target).float() / torch.numel(audio_target)
+            #     audio_accs.append(audio_acc)
+            # mean_acc = (midi_acc + sum(audio_accs)) / 10.0 
+ 
         padding_loss = sum(padding_losses)/len(padding_losses)
         audio_loss = sum(audio_losses)/len(audio_losses)
         dac_loss = sum(dac_losses)/len(dac_losses)
@@ -213,7 +230,7 @@ class InstDecoder(nn.Module):
             x_l = x[:,:,0,:].long() # x: torch.Size([1, 345, 2, 9]) -> x_l : torch.Size([4, 345, 9]) :  stereo to mono
             ### inference ###
             if y is None:
-                seq_len =  355
+                seq_len =  347
                 return self.generate(x_l, seq_len =  seq_len, strategy=strategy, sample_arg=sample_arg)
             
             
@@ -257,7 +274,7 @@ class InstDecoder(nn.Module):
                     audio_tok_embedding = x_tok_embedding
                 audio_tok_embedding = audio_tok_embedding + x_tok_embedding
             embedding = audio_tok_embedding #torch.cat((audio_tok_embedding, torch.zeros(batch_size, 1, 9).long()), dim =1) 
-
+    
             output = self.dropout(embedding)
             output = self.blocks(output)
             output = self.ln(output)
