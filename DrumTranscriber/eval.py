@@ -1,5 +1,5 @@
 from encoder_decoder_inst_c import EncoderDecoderModule, EncoderDecoderConfig    
-# from inst_decoder import InstDecoderModule, InstDecoderConfig
+from inst_decoder import InstDecoderModule, InstDecoderConfig
 from dataset_c import DrumSlayerDataset
 from torch.utils.data import DataLoader
 import wandb
@@ -20,6 +20,8 @@ from einops import rearrange
 import numpy as np
 import os
 import shutil
+from dac.utils import load_model
+from dac.model import DAC
 
 
 def load_dac(file_path, idx):
@@ -99,7 +101,7 @@ def ksh_generate(test_dataloader):
             inst_codes = codes.permute(0,2,1) # torch.Size([1, 9, seq_len])
             latent = dac_model.quantizer.from_codes(inst_codes)[0]
             audio = dac_model.decode(latent)[0]
-            audio = audio.detach().numpy().astype(np.float32)
+            audio = audio.detach().cpu().numpy().astype(np.float32)
             if i == 0:
                 output_dir = result_dir + f'{idx}_kick.wav'
             elif i==1:
@@ -110,62 +112,54 @@ def ksh_generate(test_dataloader):
             scipy.io.wavfile.write(output_dir, 44100, audio.T)
 
         
-        kick_name = load_dac('/disk2/st_drums/generated_data/drum_data_test/kickShotList.txt', idx)
-        snare_name = load_dac('/disk2/st_drums/generated_data/drum_data_test/snareShotList.txt', idx)
-        hihat_name = load_dac('/disk2/st_drums/generated_data/drum_data_test/hihatShotList.txt', idx)
+        # kick_name = load_dac('/disk2/st_drums/generated_data/drum_data_test/kickShotList.txt', idx)
+        # snare_name = load_dac('/disk2/st_drums/generated_data/drum_data_test/snareShotList.txt', idx)
+        # hihat_name = load_dac('/disk2/st_drums/generated_data/drum_data_test/hihatShotList.txt', idx)
         
-        destination_dir = '/disk2/st_drums/results/'
+        destination_dir = './results/'
         
-        kick_file = '/disk2/st_drums/one_shots/test/kick/'+ kick_name
-        new_filename = f'{idx}_kick_t.wav'
-        shutil.copy(kick_file, os.path.join(destination_dir, new_filename))
+        # kick_file = '/disk2/st_drums/one_shots/test/kick/'+ kick_name
+        # new_filename = f'{idx}_kick_t.wav'
+        # shutil.copy(kick_file, os.path.join(destination_dir, new_filename))
 
-        snare_file = '/disk2/st_drums/one_shots/test/snare/'+ snare_name
-        new_filename = f'{idx}_snare_t.wav'
-        shutil.copy(snare_file, os.path.join(destination_dir, new_filename))
+        # snare_file = '/disk2/st_drums/one_shots/test/snare/'+ snare_name
+        # new_filename = f'{idx}_snare_t.wav'
+        # shutil.copy(snare_file, os.path.join(destination_dir, new_filename))
         
-        hihat_file = '/disk2/st_drums/one_shots/test/hhclosed/'+ hihat_name
-        new_filename = f'{idx}_hihat_t.wav'
-        shutil.copy(hihat_file, os.path.join(destination_dir, new_filename))
+        # hihat_file = '/disk2/st_drums/one_shots/test/hhclosed/'+ hihat_name
+        # new_filename = f'{idx}_hihat_t.wav'
+        # shutil.copy(hihat_file, os.path.join(destination_dir, new_filename))
   
 
 def inst_generate(test_dataloader, inst):
 
     for idx, batch in tqdm(enumerate(test_dataloader)):
-        x, y, dac_length = batch # x : torch.Size([1, 345, 2, 9]) , y : torch.Size([1, 9, seq_len])
-        # batch = x.cuda(7) , y.cuda(7)
+        x, y, batch_length  = batch # x : torch.Size([1, 345, 2, 9]) , y : torch.Size([1, 9, seq_len])
+        batch = x.cuda() , y.cuda(), batch_length
         end = False
         y_target = rearrange(y[:,:,:], 'b t d -> b d t')
         # y_pred, end, loss, padding_losses, padding_in_losses, audio_losses = model(batch) # torch.Size([1, seq_len, 9]), False
         y_pred, end = model(batch) # torch.Size([1, seq_len, 9]), False
-        breakpoint()
-        y_pred = y_pred[:,345:,:]
+        y_pred = y_pred[:,346:,:]
         # Audio part only -> inst_tokens
         try:
-            end_token_idx = torch.where(y_pred == 1)[1][0]
-            inst_tokens = y_pred[:,1+0:end_token_idx,:]          #torch.Size([1, 353, 9])
+            end_token_idx = torch.where(y_pred == 0)[1][0]
+            inst_tokens = y_pred[:,:end_token_idx,:]          #torch.Size([1, 353, 9])
         except:
             end_token_idx = y_pred.shape[1]
-            inst_tokens = y_pred[:,1:,:]
+            inst_tokens = y_pred[:,:,:]
 
-        seq_len = end_token_idx-9
-
-        # Transformer Token to DAC Token
-        for i in range(9):
-            # TODO: remove the max function later.
-            inst_tokens[:, :seq_len, i] = inst_tokens[:, i:i+seq_len, i] - 4
-
-        inst_tensor = inst_tokens[:, :seq_len, :]   #torch.Size([1, 345, 9])
+        inst_tokens = inst_tokens[:, :end_token_idx, :]   #torch.Size([1, 345, 9])
+        inst_tokens = inst_tokens - 1
 
 
 
         # slicing하여 [1(batch_size), seq_len, 9] 형태로 만들기
-
-        for _, codes in enumerate([inst_tensor]):
+        for _, codes in enumerate([inst_tokens]):
             inst_codes = codes.permute(0,2,1) # torch.Size([1, 9, seq_len])
             latent = dac_model.quantizer.from_codes(inst_codes)[0]
             audio = dac_model.decode(latent)[0]
-            audio = audio.detach().numpy().astype(np.float32)
+            audio = audio.detach().cpu().numpy().astype(np.float32)
 
             output_dir = result_dir + f'{inst}/{idx}_{inst}.wav'
 
@@ -267,36 +261,32 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default='1', help='batch size')
     args = parser.parse_args()
     
-    if args.train_type == 'ksh':
-        ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-12-05-STDT-ksh-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
-    elif args.train_type == 'kick':
-        # ckpt_dir = '/workspace/DrumTranscriber/ckpts/2024-03-07-09-STDT-kick-2_2_4/epoch=0-train_total_loss=0.14.ckpt'
-        ckpt_dir = '/workspace/DrumTranscriber/ckpts/03-26-10-31-STDT-kick-1_1_3/train_total_loss=0.13-valid_total_loss=0.05.ckpt'
+
+    ckpt_dir = '/workspace/ckpts/03-27-16-39-STDT-kick-1_1_3/epoch=90-train_audio_loss=0.04-valid_audio_loss=0.00.ckpt'
     
     dac_model_path = dac.utils.download(model_type="44khz")
     dac_model = dac.DAC.load(dac_model_path) 
     dac_model.eval()
-    # dac_model.cuda()
+    dac_model.cuda()
     
-    config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
-    model = EncoderDecoderModule(config)
-    # config = InstDecoderConfig(audio_rep = audio_encoding_type, args = args)
-    # model = InstDecoderModule(config)
+    # config = EncoderDecoderConfig(audio_rep = audio_encoding_type, args = args)
+    # model = EncoderDecoderModule(config)
+    config = InstDecoderConfig(audio_rep = audio_encoding_type, args = args)
+    model = InstDecoderModule(config)
     
     ckpt = torch.load(ckpt_dir, map_location='cpu')
     model.load_state_dict(ckpt['state_dict'])
+    model.cuda()
     model.eval()
-    # model.cuda(7)
     # device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
 
     data_type = "debug"
     test_dataset = DrumSlayerDataset(data_dir, data_type, audio_encoding_type, args)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) # x: audio dac, y : target token 
 
-    # # with torch.no_grad():
-    
     if args.train_type == 'ksh':
         ksh_generate(test_dataloader)
     elif args.train_type == 'kick' or args.train_type == 'snare' or args.train_type == 'hihat':
         inst_generate(test_dataloader, args.train_type)
     
+    #export CUDA_VISIBLE_DEVICES=2
