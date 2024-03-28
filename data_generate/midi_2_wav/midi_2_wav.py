@@ -354,9 +354,10 @@ def midi_2_wav_other_all(args):
         
         mixed_loop_dir = output_dir + f'drum_data_{data_type}/mixed_loops/'
         os.makedirs(mixed_loop_dir, exist_ok=True)
+
         BATCH_SIZE = 4
         all_dataset = AllData(loop_kick,loop_snare, loop_hhclosed, loop_piano, loop_guitar, loop_bass, loop_vocal,args,midi_numbers[n])
-        all_dataloader = DataLoader(all_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=15)
+        all_dataloader = DataLoader(all_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=30)
 
 
         total_batches = math.ceil(len(all_dataset) / BATCH_SIZE)
@@ -368,42 +369,38 @@ def midi_2_wav_other_all(args):
 
                 # numpy to wav write
                 write(mixed_loop_dir + f'{batch_idx*BATCH_SIZE+i}.wav', sample_rate, mixed_loop_.T.cpu().numpy())            
-
-
-
+ 
+        # Bring the each loop separately
         # for idx in tqdm(range(midi_numbers[n]), desc=f'midi2wav {data_type} data'): 
-        #     start_time = time.time()
-
         #     audio_loop_kick, _, _  = loop_kick[idx]
         #     audio_loop_snare, _, _  = loop_snare[idx]
         #     audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
-            
 
-        #     if random.random() <= 0.4:
-        #         audio_loop_piano = np.zeros((2,44100*loop_seconds))
-        #     else:
-        #         audio_loop_piano = loop_piano['piano']
-        #     if random.random() <= 0.4:
-        #         audio_loop_bass =  np.zeros((2,44100*loop_seconds))
-        #     else:
-        #         audio_loop_bass = loop_bass['bass']
-        #     if random.random() <= 0.4:
-        #         audio_loop_guitar = np.zeros((2,44100*loop_seconds))
-        #     else:
-        #         audio_loop_guitar = loop_guitar['guitar']
-        #     if random.random() <= 0.4:
-        #         audio_loop_vocal =  np.zeros((2,44100*loop_seconds))
-        #     else:
-        #         audio_loop_vocal = loop_vocal['vocal']
-                
-        #     end_time = time.time()
+        #     audio_loop_piano = loop_piano['piano']
+        #     audio_loop_guitar = loop_guitar['guitar']
+        #     audio_loop_bass = loop_bass['bass']
+        #     audio_loop_vocal = loop_vocal['vocal']
+
+        #     if random.random() <= 0.2:
+        #         audio_loop_piano = np.zeros_like(audio_loop_piano)
+        #     if random.random() <= 0.2:
+        #         audio_loop_bass =  np.zeros_like(audio_loop_bass)
+        #     if random.random() <= 0.2:
+        #         audio_loop_guitar =  np.zeros_like(audio_loop_guitar)
+        #     if random.random() <= 0.1:
+        #         audio_loop_vocal =  np.zeros_like(audio_loop_vocal)
+            
             
         #     # loop + DAFX => mixed_loop
         #     mixed_loop = generate_drum_other_fx(audio_loop_kick, audio_loop_snare, audio_loop_hhclosed, audio_loop_piano, audio_loop_guitar, audio_loop_bass, audio_loop_vocal,args)
-        #     fx_time = time.time()
-
+            
+        #     # numpy to wav write
+        #     mixed_loop_dir = output_dir + f'drum_data_{data_type}/mixed_loops/'
+        #     os.makedirs(mixed_loop_dir, exist_ok=True)
+        #     write(mixed_loop_dir + f'{idx}.wav', sample_rate, mixed_loop.T)
 
     return None    
+ 
 
 def midi_2_wav_all(args):
     from tqdm import tqdm
