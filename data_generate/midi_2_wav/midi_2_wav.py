@@ -6,9 +6,16 @@ from natsort import natsorted
 from scipy import signal
 import torch
 import sys
+import scipy
 from scipy.io.wavfile import write
 import random
-
+import time 
+from tqdm import tqdm
+import soundfile as sf
+import torch
+from torch.utils.data import DataLoader
+import audiofile
+import math
 current_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
@@ -140,6 +147,7 @@ class Loop(Dataset):
     def __init__(self, single_shot_dataset, midi_dataset, loop_seconds, output_dir, data_type, inst, reference_pitch=48, render_type='slice'): #60
         self.ssdataset = single_shot_dataset
         self.mididataset = midi_dataset
+        self.loop_seconds = loop_seconds
         self.loop_length = loop_seconds * self.ssdataset.sample_rate
         self.reference_pitch = reference_pitch
         self.output_dir = output_dir
@@ -151,7 +159,7 @@ class Loop(Dataset):
 
     def __getitem__(self, index):
         # Choose a random dataset
-        ssindex = np.random.choice(len(self.ssdataset))
+        ssindex = index #np.random.choice(len(self.ssdataset))
         midiindex = index
 
         # Get singleshot & velocity & pitch
@@ -201,9 +209,14 @@ class SingleShot(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        audio, _ = librosa.load(self.data[idx], sr=self.sample_rate, mono=False)
+        # sr, audio = scipy.io.wavfile.read(self.data[idx])
+        audio,sr = audiofile.read(self.data[idx])
+        if sr != self.sample_rate:
+            audio, _ = librosa.load(self.data[idx], sr=self.sample_rate, mono=False)
+
         if audio.ndim == 1:
             audio = np.stack((audio, audio)) # make mono to stereo
+
         return audio, self.data[idx]
 
 
@@ -216,7 +229,7 @@ class MIDI(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        # breakpoint()
+
         midi_960n = np.load(self.data[idx]) # (2, 960*loop_seconds)
         midi_sr_n = np.zeros([midi_960n.shape[0], self.sr * self.loop_seconds]) # (2, sample_rate * loop_second)
         
@@ -238,16 +251,56 @@ def generate_midi_2_wav(args):
             midi_2_wav_one(args)
     return None
 
+class AllData(Dataset):
+    def __init__(self, loop_kick,loop_snare, loop_hhclosed, loop_piano, loop_guitar, loop_bass, loop_vocal, args,midi_numbers):
+        
+        self.loop_kick  = loop_kick
+        self.loop_snare = loop_snare
+        self.loop_hhclosed = loop_hhclosed
+        self.loop_piano = loop_piano
+        self.loop_guitar = loop_guitar
+        self.loop_bass = loop_bass
+        self.loop_vocal = loop_vocal
+        self.loop_seconds = loop_kick.loop_seconds
+        self.args = args
+        self.len = midi_numbers
+    def __len__(self):
+        return self.len
+    
+    def __getitem__(self, idx):
+
+        audio_loop_kick, _, _  = self.loop_kick[idx]
+        audio_loop_snare, _, _  = self.loop_snare[idx]
+        audio_loop_hhclosed, _, _  = self.loop_hhclosed[idx]
+        
+        if random.random() <= 0.4:
+            audio_loop_piano = np.zeros((2,44100*self.loop_seconds))
+        else:
+            audio_loop_piano = self.loop_piano['piano']
+        if random.random() <= 0.4:
+            audio_loop_bass =  np.zeros((2,44100*self.loop_seconds))
+        else:
+            audio_loop_bass = self.loop_bass['bass']
+        if random.random() <= 0.4:
+            audio_loop_guitar = np.zeros((2,44100*self.loop_seconds))
+        else:
+            audio_loop_guitar = self.loop_guitar['guitar']
+        if random.random() <= 0.4:
+            audio_loop_vocal =  np.zeros((2,44100*self.loop_seconds))
+        else:
+            audio_loop_vocal = self.loop_vocal['vocal']
+              
+        mixed_loop = generate_drum_other_fx(audio_loop_kick, audio_loop_snare, audio_loop_hhclosed, audio_loop_piano, audio_loop_guitar, audio_loop_bass, audio_loop_vocal,self.args)
+        return mixed_loop
+    
 def midi_2_wav_other_all(args):
-    from tqdm import tqdm
-    import soundfile as sf
-    import torch
+
     all = ['train', 'valid', 'test']
     midi_number = args.midi_number
     loop_seconds = args.loop_seconds
     midi_numbers = [int(midi_number*0.9), int(midi_number*0.05), int(midi_number*0.05)]
-    for data_type in all:
-        
+    for n,data_type in enumerate(all):
+
         sample_rate = args.sample_rate
         loop_seconds = args.loop_seconds
         oneshot_dir = args.oneshot_dir
@@ -295,33 +348,60 @@ def midi_2_wav_other_all(args):
         loop_vocal = VocalLoop(sample_vocal, loop_seconds)
         
         # Bring the each loop separately
-        for idx in tqdm(range(len(loop_kick)), desc=f'midi2wav {data_type} data'): 
-            audio_loop_kick, _, _  = loop_kick[idx]
-            audio_loop_snare, _, _  = loop_snare[idx]
-            audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
+        # for idx in tqdm(range(len(loop_kick)), desc=f'midi2wav {data_type} data'): 
+        
+        # audio_loop_kick = DataLoader(loop_kick, batch_size=4, shuffle=False, num_workers=5)
+        
+        mixed_loop_dir = output_dir + f'drum_data_{data_type}/mixed_loops/'
+        os.makedirs(mixed_loop_dir, exist_ok=True)
+        BATCH_SIZE = 4
+        all_dataset = AllData(loop_kick,loop_snare, loop_hhclosed, loop_piano, loop_guitar, loop_bass, loop_vocal,args,midi_numbers[n])
+        all_dataloader = DataLoader(all_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=15)
 
-            audio_loop_piano = loop_piano['piano']
-            audio_loop_guitar = loop_guitar['guitar']
-            audio_loop_bass = loop_bass['bass']
-            audio_loop_vocal = loop_vocal['vocal']
 
-            if random.random() <= 0.2:
-                audio_loop_piano = np.zeros_like(audio_loop_piano)
-            if random.random() <= 0.2:
-                audio_loop_bass =  np.zeros_like(audio_loop_bass)
-            if random.random() <= 0.2:
-                audio_loop_guitar =  np.zeros_like(audio_loop_guitar)
-            if random.random() <= 0.1:
-                audio_loop_vocal =  np.zeros_like(audio_loop_vocal)
+        total_batches = math.ceil(len(all_dataset) / BATCH_SIZE)
+        for batch_idx, (mixed_loop) in tqdm(enumerate(all_dataloader),total=total_batches, desc=f'midi2wav {data_type} data'): 
+            # print(f'Batch {batch_idx}: Data shape {mixed_loop.shape}') # mixed_loop.shape = (4, 2, 220500)
+
+            for i in range(mixed_loop.shape[0]):
+                mixed_loop_ = mixed_loop[i]
+
+                # numpy to wav write
+                write(mixed_loop_dir + f'{batch_idx*BATCH_SIZE+i}.wav', sample_rate, mixed_loop_.T.cpu().numpy())            
+
+
+
+        # for idx in tqdm(range(midi_numbers[n]), desc=f'midi2wav {data_type} data'): 
+        #     start_time = time.time()
+
+        #     audio_loop_kick, _, _  = loop_kick[idx]
+        #     audio_loop_snare, _, _  = loop_snare[idx]
+        #     audio_loop_hhclosed, _, _  = loop_hhclosed[idx]
             
+
+        #     if random.random() <= 0.4:
+        #         audio_loop_piano = np.zeros((2,44100*loop_seconds))
+        #     else:
+        #         audio_loop_piano = loop_piano['piano']
+        #     if random.random() <= 0.4:
+        #         audio_loop_bass =  np.zeros((2,44100*loop_seconds))
+        #     else:
+        #         audio_loop_bass = loop_bass['bass']
+        #     if random.random() <= 0.4:
+        #         audio_loop_guitar = np.zeros((2,44100*loop_seconds))
+        #     else:
+        #         audio_loop_guitar = loop_guitar['guitar']
+        #     if random.random() <= 0.4:
+        #         audio_loop_vocal =  np.zeros((2,44100*loop_seconds))
+        #     else:
+        #         audio_loop_vocal = loop_vocal['vocal']
+                
+        #     end_time = time.time()
             
-            # loop + DAFX => mixed_loop
-            mixed_loop = generate_drum_other_fx(audio_loop_kick, audio_loop_snare, audio_loop_hhclosed, audio_loop_piano, audio_loop_guitar, audio_loop_bass, audio_loop_vocal,args)
-            
-            # numpy to wav write
-            mixed_loop_dir = output_dir + f'drum_data_{data_type}/mixed_loops/'
-            os.makedirs(mixed_loop_dir, exist_ok=True)
-            write(mixed_loop_dir + f'{idx}.wav', sample_rate, mixed_loop.T)
+        #     # loop + DAFX => mixed_loop
+        #     mixed_loop = generate_drum_other_fx(audio_loop_kick, audio_loop_snare, audio_loop_hhclosed, audio_loop_piano, audio_loop_guitar, audio_loop_bass, audio_loop_vocal,args)
+        #     fx_time = time.time()
+
 
     return None    
 
@@ -388,9 +468,7 @@ def midi_2_wav_all(args):
 
 # TODO: Need to update filenames, arguments to function call, etc.
 def midi_2_wav_one(args):
-    from tqdm import tqdm
-    import soundfile as sf
-    import torch
+
     data_type = args.data_type
     sample_rate = args.sample_rate
     loop_seconds = args.loop_seconds
